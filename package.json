@@ -1,0 +1,83 @@
+{
+  "name": "vscode-ctrmml",
+  "displayName": "ctrmml",
+  "description": "Language support for ctrmml",
+  "version": "0.0.1",
+  "publisher": "kbt",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:ctrmml"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "ctrmml",
+        "aliases": [
+          "ctrmml",
+          "MML"
+        ],
+        "extensions": [
+          ".mml"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "configuration": {
+      "title": "ctrmml",
+      "properties": {
+        "ctrmml.languageServer.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to ctrmml-lsp binary. If empty, the extension downloads it automatically."
+        },
+        "ctrmml.languageServer.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Command-line arguments passed to ctrmml-lsp."
+        },
+        "ctrmml.languageServer.env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Extra environment variables passed to ctrmml-lsp."
+        },
+        "ctrmml.languageServer.initializationOptions": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "default": null,
+          "description": "Initialization options for ctrmml-lsp."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.12",
+    "tar": "^6.2.0",
+    "web-tree-sitter": "^0.26.3",
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.5",
+    "@types/node": "^20.11.30",
+    "@types/vscode": "^1.85.0",
+    "@types/tar": "^6.1.10",
+    "typescript": "^5.3.3"
+  }
+}
