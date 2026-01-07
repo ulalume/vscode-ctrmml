@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
-import * as Parser from "web-tree-sitter";
 import { LANGUAGE_WASM } from "./constants";
 import { fileExists } from "./utils/fs";
+import { Parser } from "./webTreeSitter";
 
 let languagePromise: Promise<Parser.Language> | null = null;
 

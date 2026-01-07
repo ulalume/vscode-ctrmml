@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import * as Parser from "web-tree-sitter";
 import { getTreeSitterLanguage } from "./treeSitter";
+import { Parser } from "./webTreeSitter";
 
 export const SEMANTIC_TOKEN_TYPES = [
   "comment",
