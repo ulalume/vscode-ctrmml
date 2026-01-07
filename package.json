@@ -2,7 +2,7 @@
   "name": "vscode-ctrmml",
   "displayName": "ctrmml",
   "description": "Language support for ctrmml",
-  "version": "0.0.1",
+  "version": "0.0.7",
   "publisher": "ulalume",
   "repository": {
     "type": "git",
@@ -15,10 +15,37 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "onLanguage:ctrmml"
+    "onLanguage:ctrmml",
+    "onCommand:ctrmml.play",
+    "onCommand:ctrmml.playFromCursor",
+    "onCommand:ctrmml.stop",
+    "onCommand:ctrmml.exportVgm",
+    "onCommand:ctrmml.exportWav"
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "ctrmml.play",
+        "title": "ctrmml: play"
+      },
+      {
+        "command": "ctrmml.playFromCursor",
+        "title": "ctrmml: play from cursor"
+      },
+      {
+        "command": "ctrmml.stop",
+        "title": "ctrmml: stop"
+      },
+      {
+        "command": "ctrmml.exportVgm",
+        "title": "ctrmml: export vgm"
+      },
+      {
+        "command": "ctrmml.exportWav",
+        "title": "ctrmml: export wav"
+      }
+    ],
     "languages": [
       {
         "id": "ctrmml",

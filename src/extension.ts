@@ -4,7 +4,15 @@ import {
   LanguageClientOptions,
   ServerOptions,
 } from "vscode-languageclient/node";
-import { LANGUAGE_ID, LSP_ID } from "./constants";
+import {
+  CMD_EXPORT_VGM,
+  CMD_EXPORT_WAV,
+  CMD_PLAY,
+  CMD_PLAY_FROM_CURSOR,
+  CMD_STOP,
+  LANGUAGE_ID,
+  LSP_ID,
+} from "./constants";
 import { ensureServerBinary } from "./lsp";
 import {
   CtrmmlSemanticTokensProvider,
@@ -13,6 +21,106 @@ import {
 import { fileExists } from "./utils/fs";
 
 let client: LanguageClient | undefined;
+
+const CMD_EXPORT_MENU = "ctrmml.status.exportMenu";
+
+const COMMANDS_NEED_URI = new Set([
+  CMD_PLAY,
+  CMD_PLAY_FROM_CURSOR,
+  CMD_EXPORT_VGM,
+  CMD_EXPORT_WAV,
+]);
+
+function resolveCommandArgs(command: string, args: any[]): any[] {
+  if (args.length > 0 || !COMMANDS_NEED_URI.has(command)) {
+    return args;
+  }
+
+  const editor = vscode.window.activeTextEditor;
+  if (!editor || editor.document.languageId !== LANGUAGE_ID) {
+    return args;
+  }
+
+  const uri = editor.document.uri.toString();
+  if (command === CMD_PLAY_FROM_CURSOR) {
+    const position = editor.selection.active;
+    return [uri, position.line, position.character];
+  }
+  return [uri];
+}
+
+function registerStatusBarItems(context: vscode.ExtensionContext): void {
+  const playItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+    100
+  );
+  playItem.text = "$(play) Play";
+  playItem.tooltip = "ctrmml: play";
+  playItem.command = CMD_PLAY;
+
+  const playCursorItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+    95
+  );
+  playCursorItem.text = "$(play-circle) Play Cursor";
+  playCursorItem.tooltip = "ctrmml: play from cursor";
+  playCursorItem.command = CMD_PLAY_FROM_CURSOR;
+
+  const stopItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+    90
+  );
+  stopItem.text = "$(stop) Stop";
+  stopItem.tooltip = "ctrmml: stop";
+  stopItem.command = CMD_STOP;
+
+  const exportItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+    80
+  );
+  exportItem.text = "$(save) Export";
+  exportItem.tooltip = "ctrmml: export";
+  exportItem.command = CMD_EXPORT_MENU;
+
+  const updateVisibility = () => {
+    const editor = vscode.window.activeTextEditor;
+    const isCtrmml = editor?.document.languageId === LANGUAGE_ID;
+    if (isCtrmml) {
+      playItem.show();
+      playCursorItem.show();
+      stopItem.show();
+      exportItem.show();
+    } else {
+      playItem.hide();
+      playCursorItem.hide();
+      stopItem.hide();
+      exportItem.hide();
+    }
+  };
+
+  context.subscriptions.push(
+    playItem,
+    playCursorItem,
+    stopItem,
+    exportItem,
+    vscode.window.onDidChangeActiveTextEditor(updateVisibility),
+    vscode.commands.registerCommand(CMD_EXPORT_MENU, async () => {
+      const selection = await vscode.window.showQuickPick(
+        [
+          { label: "Export VGM", command: CMD_EXPORT_VGM },
+          { label: "Export WAV", command: CMD_EXPORT_WAV },
+        ],
+        { placeHolder: "ctrmml: export" }
+      );
+      if (!selection) {
+        return;
+      }
+      await vscode.commands.executeCommand(selection.command);
+    })
+  );
+
+  updateVisibility();
+}
 
 export async function activate(
   context: vscode.ExtensionContext
@@ -70,6 +178,12 @@ export async function activate(
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: "file", language: LANGUAGE_ID }],
     initializationOptions: initOptions ?? undefined,
+    middleware: {
+      executeCommand: (command, args, next) => {
+        const resolvedArgs = resolveCommandArgs(command, args);
+        return next(command, resolvedArgs);
+      },
+    },
   };
 
   client = new LanguageClient(
@@ -81,6 +195,8 @@ export async function activate(
 
   await client.start();
   context.subscriptions.push(client);
+
+  registerStatusBarItems(context);
 }
 
 export async function deactivate(): Promise<void> {
