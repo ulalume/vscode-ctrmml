@@ -3,7 +3,7 @@
   "displayName": "ctrmml",
   "description": "Language support for ctrmml",
   "version": "0.0.1",
-  "publisher": "kbt",
+  "publisher": "ulalume",
   "engines": {
     "vscode": "^1.85.0"
   },
