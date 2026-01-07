@@ -4,6 +4,10 @@
   "description": "Language support for ctrmml",
   "version": "0.0.1",
   "publisher": "ulalume",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ulalume/vscode-ctrmml.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -64,20 +68,22 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "compile": "esbuild src/extension.ts --bundle --platform=node --target=node18 --format=cjs --outfile=out/extension.js --sourcemap --minify --legal-comments=none --external:vscode && node scripts/copy-web-tree-sitter-wasm.js",
+    "watch": "node scripts/copy-web-tree-sitter-wasm.js && esbuild src/extension.ts --bundle --platform=node --target=node18 --format=cjs --outfile=out/extension.js --sourcemap --external:vscode --watch",
+    "typecheck": "tsc -p ./ --noEmit"
   },
   "dependencies": {
     "adm-zip": "^0.5.12",
     "tar": "^6.2.0",
-    "web-tree-sitter": "^0.26.3",
-    "vscode-languageclient": "^9.0.1"
+    "vscode-languageclient": "^9.0.1",
+    "web-tree-sitter": "^0.26.3"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.5",
     "@types/node": "^20.11.30",
-    "@types/vscode": "^1.85.0",
     "@types/tar": "^6.1.10",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.25.12",
     "typescript": "^5.3.3"
   }
 }
