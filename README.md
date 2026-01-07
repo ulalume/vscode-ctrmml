@@ -2,6 +2,8 @@
 
 VS Code extension + LSP for ctrmml.
 
+If you prefer Zed, see https://github.com/ulalume/zed-ctrmml
+
 > ⚠️ **Early Development**: This project is in active development and features may be incomplete.
 
 ## Features
