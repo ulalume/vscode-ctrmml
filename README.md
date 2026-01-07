@@ -21,21 +21,20 @@ If you prefer Zed, see https://github.com/ulalume/zed-ctrmml
   - Play from cursor: macOS `Cmd + Alt + P`, Windows/Linux `Ctrl + Alt + P`.
   - Stop: macOS `Cmd + Alt + .`, Windows/Linux `Ctrl + Alt + .`.
 
-## Use in VS Code
+## Install
 
-## Settings
+Download the latest VSIX from GitHub Releases:
+https://github.com/ulalume/vscode-ctrmml/releases/latest
 
-- `ctrmml.languageServer.path`: override the language server binary path.
-- `ctrmml.languageServer.env`: extra environment variables for the language server.
-
-## Development (local)
+Install it in VS Code:
 
 ```sh
-npm run install
-npm run compile
-
-code --extensionDevelopmentPath=path/of/vscode-ctrmml
+code --install-extension /path/to/vscode-ctrmml-vX.Y.Z.vsix
 ```
+
+Or use the UI:
+
+- Extensions view -> "..." menu -> Install from VSIX...
 
 ## Dependencies
 
