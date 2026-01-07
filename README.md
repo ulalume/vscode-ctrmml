@@ -20,9 +20,7 @@ VS Code extension + LSP for ctrmml.
 ## Settings
 
 - `ctrmml.languageServer.path`: override the language server binary path.
-- `ctrmml.languageServer.args`: extra CLI args for the language server.
 - `ctrmml.languageServer.env`: extra environment variables for the language server.
-- `ctrmml.languageServer.initializationOptions`: initialization options passed to the server.
 
 ## Development (local)
 
