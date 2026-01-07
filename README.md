@@ -14,6 +14,10 @@ VS Code extension + LSP for ctrmml.
 
 - Code Actions: macOS `Cmd + .`, Windows/Linux `Ctrl + .`.
 - Run commands from the Code Actions list in an `.mml` file.
+- Default keyboard shortcuts:
+  - Play: macOS `Cmd + Alt + Shift + P`, Windows/Linux `Ctrl + Alt + Shift + P`.
+  - Play from cursor: macOS `Cmd + Alt + P`, Windows/Linux `Ctrl + Alt + P`.
+  - Stop: macOS `Cmd + Alt + .`, Windows/Linux `Ctrl + Alt + .`.
 
 ## Use in VS Code
 
