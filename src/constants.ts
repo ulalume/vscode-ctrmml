@@ -10,3 +10,6 @@ export const CMD_PLAY_FROM_CURSOR = "ctrmml.playFromCursor";
 export const CMD_STOP = "ctrmml.stop";
 export const CMD_EXPORT_VGM = "ctrmml.exportVgm";
 export const CMD_EXPORT_WAV = "ctrmml.exportWav";
+export const CMD_MDSLINK_FILE = "ctrmml.mdslinkFile";
+export const CMD_MDSLINK_DIRECTORY = "ctrmml.mdslinkDirectory";
+export const CMD_MDSLINK_FROM_CONFIG = "ctrmml.mdslinkFromConfig";

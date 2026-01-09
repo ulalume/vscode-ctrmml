@@ -5,6 +5,9 @@ import {
   ServerOptions,
 } from "vscode-languageclient/node";
 import {
+  CMD_MDSLINK_DIRECTORY,
+  CMD_MDSLINK_FILE,
+  CMD_MDSLINK_FROM_CONFIG,
   CMD_EXPORT_VGM,
   CMD_EXPORT_WAV,
   CMD_PLAY,
@@ -23,8 +26,12 @@ import { fileExists } from "./utils/fs";
 let client: LanguageClient | undefined;
 
 const CMD_EXPORT_MENU = "ctrmml.status.exportMenu";
+const CMD_MDSLINK_MENU = "ctrmml.status.mdslinkMenu";
 
 const COMMANDS_NEED_URI = new Set([
+  CMD_MDSLINK_FILE,
+  CMD_MDSLINK_DIRECTORY,
+  CMD_MDSLINK_FROM_CONFIG,
   CMD_PLAY,
   CMD_PLAY_FROM_CURSOR,
   CMD_EXPORT_VGM,
@@ -82,6 +89,14 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
   exportItem.tooltip = "ctrmml: export";
   exportItem.command = CMD_EXPORT_MENU;
 
+  const mdslinkItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+    70
+  );
+  mdslinkItem.text = "$(link) Mdslink";
+  mdslinkItem.tooltip = "ctrmml: mdslink";
+  mdslinkItem.command = CMD_MDSLINK_MENU;
+
   const updateVisibility = () => {
     const editor = vscode.window.activeTextEditor;
     const isCtrmml = editor?.document.languageId === LANGUAGE_ID;
@@ -90,11 +105,13 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
       playCursorItem.show();
       stopItem.show();
       exportItem.show();
+      mdslinkItem.show();
     } else {
       playItem.hide();
       playCursorItem.hide();
       stopItem.hide();
       exportItem.hide();
+      mdslinkItem.hide();
     }
   };
 
@@ -103,6 +120,7 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
     playCursorItem,
     stopItem,
     exportItem,
+    mdslinkItem,
     vscode.window.onDidChangeActiveTextEditor(updateVisibility),
     vscode.commands.registerCommand(CMD_EXPORT_MENU, async () => {
       const selection = await vscode.window.showQuickPick(
@@ -111,6 +129,23 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
           { label: "Export WAV", command: CMD_EXPORT_WAV },
         ],
         { placeHolder: "ctrmml: export" }
+      );
+      if (!selection) {
+        return;
+      }
+      await vscode.commands.executeCommand(selection.command);
+    }),
+    vscode.commands.registerCommand(CMD_MDSLINK_MENU, async () => {
+      const selection = await vscode.window.showQuickPick(
+        [
+          { label: "mdslink file", command: CMD_MDSLINK_FILE },
+          { label: "mdslink directory", command: CMD_MDSLINK_DIRECTORY },
+          {
+            label: "mdslink from mdslink.json",
+            command: CMD_MDSLINK_FROM_CONFIG,
+          },
+        ],
+        { placeHolder: "ctrmml: mdslink" }
       );
       if (!selection) {
         return;
