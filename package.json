@@ -19,6 +19,9 @@
     "onCommand:ctrmml.play",
     "onCommand:ctrmml.playFromCursor",
     "onCommand:ctrmml.stop",
+    "onCommand:ctrmml.mdslinkFile",
+    "onCommand:ctrmml.mdslinkDirectory",
+    "onCommand:ctrmml.mdslinkFromConfig",
     "onCommand:ctrmml.exportVgm",
     "onCommand:ctrmml.exportWav"
   ],
@@ -36,6 +39,18 @@
       {
         "command": "ctrmml.stop",
         "title": "ctrmml: stop"
+      },
+      {
+        "command": "ctrmml.mdslinkFile",
+        "title": "ctrmml: mdslink file"
+      },
+      {
+        "command": "ctrmml.mdslinkDirectory",
+        "title": "ctrmml: mdslink directory"
+      },
+      {
+        "command": "ctrmml.mdslinkFromConfig",
+        "title": "ctrmml: mdslink from mdslink.json"
       },
       {
         "command": "ctrmml.exportVgm",
