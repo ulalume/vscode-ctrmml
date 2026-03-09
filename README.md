@@ -10,7 +10,7 @@ If you prefer Zed, see https://github.com/ulalume/zed-ctrmml
 
 - Tree-sitter syntax highlighting for MML.
 - LSP completions (metadata, commands, platform values, PCM paths).
-- Code Actions: play, play from cursor, stop, export vgm/wav.
+- Code Actions: play, play from cursor, stop, export vgm/wav, mdslink, quickrom.
 
 ## Usage
 

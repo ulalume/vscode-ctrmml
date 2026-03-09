@@ -2,7 +2,7 @@
   "name": "vscode-ctrmml",
   "displayName": "ctrmml",
   "description": "Language support for ctrmml",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "publisher": "ulalume",
   "repository": {
     "type": "git",
@@ -22,6 +22,11 @@
     "onCommand:ctrmml.mdslinkFile",
     "onCommand:ctrmml.mdslinkDirectory",
     "onCommand:ctrmml.mdslinkFromConfig",
+    "onCommand:ctrmml.mdslinkMenu",
+    "onCommand:ctrmml.quickromFile",
+    "onCommand:ctrmml.quickromDirectory",
+    "onCommand:ctrmml.quickromFromConfig",
+    "onCommand:ctrmml.quickromMenu",
     "onCommand:ctrmml.exportVgm",
     "onCommand:ctrmml.exportWav"
   ],
@@ -51,6 +56,26 @@
       {
         "command": "ctrmml.mdslinkFromConfig",
         "title": "ctrmml: mdslink from mdslink.json"
+      },
+      {
+        "command": "ctrmml.mdslinkMenu",
+        "title": "ctrmml: mdslink..."
+      },
+      {
+        "command": "ctrmml.quickromFile",
+        "title": "ctrmml: quickrom file"
+      },
+      {
+        "command": "ctrmml.quickromDirectory",
+        "title": "ctrmml: quickrom directory"
+      },
+      {
+        "command": "ctrmml.quickromFromConfig",
+        "title": "ctrmml: quickrom from quickrom.json"
+      },
+      {
+        "command": "ctrmml.quickromMenu",
+        "title": "ctrmml: quickrom..."
       },
       {
         "command": "ctrmml.exportVgm",
@@ -136,7 +161,7 @@
   },
   "dependencies": {
     "adm-zip": "^0.5.12",
-    "tar": "^6.2.0",
+    "tar": "^7.5.9",
     "vscode-languageclient": "^9.0.1",
     "web-tree-sitter": "^0.26.3"
   },

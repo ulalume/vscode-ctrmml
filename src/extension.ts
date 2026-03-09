@@ -8,10 +8,15 @@ import {
   CMD_MDSLINK_DIRECTORY,
   CMD_MDSLINK_FILE,
   CMD_MDSLINK_FROM_CONFIG,
+  CMD_MDSLINK_MENU,
   CMD_EXPORT_VGM,
   CMD_EXPORT_WAV,
   CMD_PLAY,
   CMD_PLAY_FROM_CURSOR,
+  CMD_QUICKROM_DIRECTORY,
+  CMD_QUICKROM_FILE,
+  CMD_QUICKROM_FROM_CONFIG,
+  CMD_QUICKROM_MENU,
   CMD_STOP,
   LANGUAGE_ID,
   LSP_ID,
@@ -25,13 +30,19 @@ import { fileExists } from "./utils/fs";
 
 let client: LanguageClient | undefined;
 
-const CMD_EXPORT_MENU = "ctrmml.status.exportMenu";
-const CMD_MDSLINK_MENU = "ctrmml.status.mdslinkMenu";
+const CMD_STATUS_EXPORT_MENU = "ctrmml.status.exportMenu";
+const CMD_STATUS_MDSLINK_MENU = "ctrmml.status.mdslinkMenu";
+const CMD_STATUS_QUICKROM_MENU = "ctrmml.status.quickromMenu";
 
 const COMMANDS_NEED_URI = new Set([
   CMD_MDSLINK_FILE,
   CMD_MDSLINK_DIRECTORY,
   CMD_MDSLINK_FROM_CONFIG,
+  CMD_MDSLINK_MENU,
+  CMD_QUICKROM_FILE,
+  CMD_QUICKROM_DIRECTORY,
+  CMD_QUICKROM_FROM_CONFIG,
+  CMD_QUICKROM_MENU,
   CMD_PLAY,
   CMD_PLAY_FROM_CURSOR,
   CMD_EXPORT_VGM,
@@ -87,15 +98,23 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
   );
   exportItem.text = "$(save) Export";
   exportItem.tooltip = "ctrmml: export";
-  exportItem.command = CMD_EXPORT_MENU;
+  exportItem.command = CMD_STATUS_EXPORT_MENU;
 
-  const mdslinkItem = vscode.window.createStatusBarItem(
+  const quickromItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
     70
   );
+  quickromItem.text = "$(package) QuickROM";
+  quickromItem.tooltip = "ctrmml: quickrom";
+  quickromItem.command = CMD_STATUS_QUICKROM_MENU;
+
+  const mdslinkItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+    60
+  );
   mdslinkItem.text = "$(link) Mdslink";
   mdslinkItem.tooltip = "ctrmml: mdslink";
-  mdslinkItem.command = CMD_MDSLINK_MENU;
+  mdslinkItem.command = CMD_STATUS_MDSLINK_MENU;
 
   const updateVisibility = () => {
     const editor = vscode.window.activeTextEditor;
@@ -105,12 +124,14 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
       playCursorItem.show();
       stopItem.show();
       exportItem.show();
+      quickromItem.show();
       mdslinkItem.show();
     } else {
       playItem.hide();
       playCursorItem.hide();
       stopItem.hide();
       exportItem.hide();
+      quickromItem.hide();
       mdslinkItem.hide();
     }
   };
@@ -120,9 +141,10 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
     playCursorItem,
     stopItem,
     exportItem,
+    quickromItem,
     mdslinkItem,
     vscode.window.onDidChangeActiveTextEditor(updateVisibility),
-    vscode.commands.registerCommand(CMD_EXPORT_MENU, async () => {
+    vscode.commands.registerCommand(CMD_STATUS_EXPORT_MENU, async () => {
       const selection = await vscode.window.showQuickPick(
         [
           { label: "Export VGM", command: CMD_EXPORT_VGM },
@@ -135,26 +157,51 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
       }
       await vscode.commands.executeCommand(selection.command);
     }),
-    vscode.commands.registerCommand(CMD_MDSLINK_MENU, async () => {
-      const selection = await vscode.window.showQuickPick(
-        [
-          { label: "mdslink file", command: CMD_MDSLINK_FILE },
-          { label: "mdslink directory", command: CMD_MDSLINK_DIRECTORY },
-          {
-            label: "mdslink from mdslink.json",
-            command: CMD_MDSLINK_FROM_CONFIG,
-          },
-        ],
-        { placeHolder: "ctrmml: mdslink" }
-      );
-      if (!selection) {
-        return;
-      }
-      await vscode.commands.executeCommand(selection.command);
-    })
+    vscode.commands.registerCommand(CMD_STATUS_MDSLINK_MENU, () =>
+      showMdslinkMenu()
+    ),
+    vscode.commands.registerCommand(CMD_STATUS_QUICKROM_MENU, () =>
+      showQuickromMenu()
+    )
   );
 
   updateVisibility();
+}
+
+async function showMdslinkMenu(): Promise<void> {
+  const selection = await vscode.window.showQuickPick(
+    [
+      { label: "mdslink file", command: CMD_MDSLINK_FILE },
+      { label: "mdslink directory", command: CMD_MDSLINK_DIRECTORY },
+      {
+        label: "mdslink from mdslink.json",
+        command: CMD_MDSLINK_FROM_CONFIG,
+      },
+    ],
+    { placeHolder: "ctrmml: mdslink" }
+  );
+  if (!selection) {
+    return;
+  }
+  await vscode.commands.executeCommand(selection.command);
+}
+
+async function showQuickromMenu(): Promise<void> {
+  const selection = await vscode.window.showQuickPick(
+    [
+      { label: "quickrom file", command: CMD_QUICKROM_FILE },
+      { label: "quickrom directory", command: CMD_QUICKROM_DIRECTORY },
+      {
+        label: "quickrom from quickrom.json",
+        command: CMD_QUICKROM_FROM_CONFIG,
+      },
+    ],
+    { placeHolder: "ctrmml: quickrom" }
+  );
+  if (!selection) {
+    return;
+  }
+  await vscode.commands.executeCommand(selection.command);
 }
 
 export async function activate(
@@ -215,6 +262,12 @@ export async function activate(
     initializationOptions: initOptions ?? undefined,
     middleware: {
       executeCommand: (command, args, next) => {
+        if (command === CMD_MDSLINK_MENU) {
+          return showMdslinkMenu();
+        }
+        if (command === CMD_QUICKROM_MENU) {
+          return showQuickromMenu();
+        }
         const resolvedArgs = resolveCommandArgs(command, args);
         return next(command, resolvedArgs);
       },
