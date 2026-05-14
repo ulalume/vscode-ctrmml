@@ -241,17 +241,72 @@ async function loadPatchAtLine(
   await vscode.commands.executeCommand("editor.action.triggerSuggest");
 }
 
+/** Writable patch formats supported by `ym2612_convert`. Order shapes
+ * the order of the format filters in the save dialog. */
+const PATCH_FORMATS: { label: string; ext: string }[] = [
+  { label: "DefleMask Preset (.dmp)", ext: "dmp" },
+  { label: "Furnace Instrument (.fui)", ext: "fui" },
+  { label: "TFI (.tfi)", ext: "tfi" },
+  { label: "OPM (.opm)", ext: "opm" },
+  { label: "GIN (.gin)", ext: "gin" },
+  { label: "GIN Package (.ginpkg)", ext: "ginpkg" },
+  { label: "Rym2612 (.rym2612)", ext: "rym2612" },
+  { label: "Furnace Module (.fur)", ext: "fur" },
+  { label: "ctrmml (.mml)", ext: "mml" },
+];
+
+/** Pick a save target via the native file dialog, returning `{path,
+ * format}` or `null` if the user cancelled. The default filename
+ * follows web-ctrmml's convention `<basename>_@<N>.<ext>`. */
+async function pickPatchSaveTarget(
+  uri: string,
+  instrumentNumber: number,
+): Promise<{ path: string; format: string } | null> {
+  const sourceUri = vscode.Uri.parse(uri);
+  const sourceName = sourceUri.path.split("/").pop() ?? "";
+  const stem = sourceName.replace(/\.mml$/i, "") || "patch";
+  const defaultName = `${stem}_@${instrumentNumber}.${PATCH_FORMATS[0].ext}`;
+  const defaultUri = vscode.Uri.joinPath(
+    vscode.Uri.parse(uri).with({ path: sourceUri.path.replace(/\/[^/]*$/, "") }),
+    defaultName,
+  );
+
+  const filters: Record<string, string[]> = {};
+  for (const f of PATCH_FORMATS) filters[f.label] = [f.ext];
+
+  const picked = await vscode.window.showSaveDialog({
+    defaultUri,
+    filters,
+    saveLabel: "Save patch",
+    title: `Save @${instrumentNumber} as patch`,
+  });
+  if (!picked) return null;
+  const ext = (picked.path.split(".").pop() ?? "").toLowerCase();
+  const format =
+    PATCH_FORMATS.find((f) => f.ext === ext)?.ext ?? PATCH_FORMATS[0].ext;
+  return { path: picked.fsPath, format };
+}
+
+/** Extract the instrument number from the `@N` header at `lineNumber`
+ * (0-based) — used to seed the save dialog's default filename. */
+function readInstrumentNumber(
+  document: vscode.TextDocument,
+  zeroBasedLine: number,
+): number | null {
+  if (zeroBasedLine < 0 || zeroBasedLine >= document.lineCount) return null;
+  const match = document.lineAt(zeroBasedLine).text.match(/^\s*@(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
 function registerLensCommands(
   context: vscode.ExtensionContext,
   getClient: () => LanguageClient | undefined,
 ): void {
-  // The lens click chain is: Monaco code-lens → vscode.commands.executeCommand
-  // ("mml.previewPatch", ...args). We forward to the LSP via the language
-  // client's executeCommand request, mirroring how the built-in playback
-  // commands work. The middleware path doesn't apply here since these
-  // commands aren't registered via the LSP's server-side
-  // executeCommandProvider on the client side — they're emitted as code-lens
-  // commands directly.
+  // Code-lens click chain: Monaco code-lens → vscode.commands.executeCommand
+  // ("mml.previewPatch" or "mml.savePatch", …args). For commands the LSP
+  // owns we forward the request via the language client; for ones that
+  // need native UI (Load triggers completion, Save prompts a file
+  // dialog) we handle them here and then optionally call the LSP.
   const forwardToLsp = (command: string) =>
     vscode.commands.registerCommand(command, async (...args: unknown[]) => {
       const client = getClient();
@@ -280,11 +335,46 @@ function registerLensCommands(
         await loadPatchAtLine(uri, zeroBased, String(type));
       },
     ),
-    vscode.commands.registerCommand(CMD_SAVE_PATCH, () => {
-      vscode.window.showInformationMessage(
-        "Save patch is not yet supported in vscode-ctrmml — use web-ctrmml for now.",
-      );
-    }),
+    vscode.commands.registerCommand(
+      CMD_SAVE_PATCH,
+      async (uri: string, line: unknown, type: unknown) => {
+        if (type !== "fm") {
+          // Only FM patch export is wired right now — PSG/PCM blocks
+          // don't have a matching format ladder in ym2612_convert.
+          vscode.window.showInformationMessage(
+            "Only @N fm blocks can be exported as patches.",
+          );
+          return;
+        }
+        const zeroBased = typeof line === "number"
+          ? line
+          : typeof line === "string"
+            ? parseInt(line, 10) || 0
+            : 0;
+        const client = getClient();
+        if (!client) {
+          vscode.window.showWarningMessage(
+            "ctrmml-lsp is not running; save patch is unavailable.",
+          );
+          return;
+        }
+        const document = await vscode.workspace.openTextDocument(
+          vscode.Uri.parse(uri),
+        );
+        const number = readInstrumentNumber(document, zeroBased) ?? 1;
+        const target = await pickPatchSaveTarget(uri, number);
+        if (!target) return;
+        try {
+          await client.sendRequest("workspace/executeCommand", {
+            command: CMD_SAVE_PATCH,
+            arguments: [uri, zeroBased, type, target.path, target.format],
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          vscode.window.showErrorMessage(`Save patch failed: ${message}`);
+        }
+      },
+    ),
   );
 }
 
