@@ -7,6 +7,7 @@ import AdmZip from "adm-zip";
 import * as tar from "tar";
 import {
   LSP_ID,
+  LSP_PINNED_TAG,
   LSP_REPO,
   UPDATE_CHECK_FILENAME,
   UPDATE_CHECK_INTERVAL_MS,
@@ -46,7 +47,7 @@ export async function ensureServerBinary(
 
   let release: GithubRelease;
   try {
-    release = await fetchLatestRelease();
+    release = await fetchPinnedRelease();
     await recordUpdateCheck(storage);
   } catch (err) {
     if (cachedPath) {
@@ -129,8 +130,8 @@ function platformAssetInfo(): PlatformAssetInfo {
   return { os, arch, ext };
 }
 
-async function fetchLatestRelease(): Promise<GithubRelease> {
-  const url = `https://api.github.com/repos/${LSP_REPO}/releases/latest`;
+async function fetchPinnedRelease(): Promise<GithubRelease> {
+  const url = `https://api.github.com/repos/${LSP_REPO}/releases/tags/${LSP_PINNED_TAG}`;
   return fetchJson<GithubRelease>(url);
 }
 

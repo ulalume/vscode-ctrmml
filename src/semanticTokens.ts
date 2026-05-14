@@ -22,8 +22,19 @@ const TOKEN_TYPE_BY_NODE: Record<
   platform_command_keyword: "keyword",
   string: "string",
   number: "number",
+  // Generic + the four discriminated meta keywords (`#platform`, `#option`,
+  // `#group`, `#timesig`). Grammar emits a dedicated node per variant.
   meta_keyword: "keyword",
-  meta_platform_value: "keyword",
+  platform_meta_keyword: "keyword",
+  option_meta_keyword: "keyword",
+  group_meta_keyword: "keyword",
+  timesig_meta_keyword: "keyword",
+  // Known-value nodes for the discriminated metas — these should pop as
+  // keywords next to their preprocessor sibling.
+  platform_known_value: "keyword",
+  option_known_value: "keyword",
+  group_known_value: "keyword",
+  timesig_known_value: "keyword",
   meta_value: "string",
   at_command: "function",
   track_selector: "type",
@@ -33,6 +44,7 @@ const TOKEN_TYPE_BY_NODE: Record<
   command_with_number: "keyword",
   command: "keyword",
   escape_command: "keyword",
+  key_signature: "keyword",
   operator: "operator",
   punctuation: "operator",
   param_key: "property",
@@ -103,6 +115,10 @@ function collectTokens(
       node.endPosition.row,
       node.endPosition.column
     );
+    // The `*_known_value` and `meta_value` tokens capture the leading
+    // whitespace between the keyword and the value to keep the grammar
+    // simple. Strip it before pushing so the highlight starts at the
+    // first non-space char.
     const trimmedRange = trimLeadingWhitespaceRange(
       node.type,
       range,
@@ -111,8 +127,7 @@ function collectTokens(
     if (!trimmedRange) {
       return;
     }
-    const resolvedType = resolveTokenType(node.type, trimmedRange, document);
-    builder.push(trimmedRange, resolvedType);
+    builder.push(trimmedRange, tokenType);
     return;
   }
 
@@ -124,26 +139,20 @@ function collectTokens(
   }
 }
 
-function resolveTokenType(
-  nodeType: string,
-  range: vscode.Range,
-  document: vscode.TextDocument
-): (typeof SEMANTIC_TOKEN_TYPES)[number] {
-  if (nodeType === "meta_value") {
-    const text = document.getText(range).trim();
-    if (text === "noextpitch") {
-      return "keyword";
-    }
-  }
-  return TOKEN_TYPE_BY_NODE[nodeType];
-}
+const META_VALUE_NODES = new Set([
+  "meta_value",
+  "platform_known_value",
+  "option_known_value",
+  "group_known_value",
+  "timesig_known_value",
+]);
 
 function trimLeadingWhitespaceRange(
   nodeType: string,
   range: vscode.Range,
   document: vscode.TextDocument
 ): vscode.Range | null {
-  if (nodeType !== "meta_platform_value" && nodeType !== "meta_value") {
+  if (!META_VALUE_NODES.has(nodeType)) {
     return range;
   }
 
