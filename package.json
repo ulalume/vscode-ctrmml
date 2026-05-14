@@ -2,7 +2,7 @@
   "name": "vscode-ctrmml",
   "displayName": "ctrmml",
   "description": "Language support for ctrmml",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "ulalume",
   "repository": {
     "type": "git",
