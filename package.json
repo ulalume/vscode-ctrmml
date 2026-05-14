@@ -28,7 +28,10 @@
     "onCommand:ctrmml.quickromFromConfig",
     "onCommand:ctrmml.quickromMenu",
     "onCommand:ctrmml.exportVgm",
-    "onCommand:ctrmml.exportWav"
+    "onCommand:ctrmml.exportWav",
+    "onCommand:mml.previewPatch",
+    "onCommand:mml.loadPatch",
+    "onCommand:mml.savePatch"
   ],
   "main": "./out/extension.js",
   "contributes": {

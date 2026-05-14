@@ -5,6 +5,7 @@ import {
   ServerOptions,
 } from "vscode-languageclient/node";
 import {
+  CMD_LOAD_PATCH,
   CMD_MDSLINK_DIRECTORY,
   CMD_MDSLINK_FILE,
   CMD_MDSLINK_FROM_CONFIG,
@@ -13,10 +14,12 @@ import {
   CMD_EXPORT_WAV,
   CMD_PLAY,
   CMD_PLAY_FROM_CURSOR,
+  CMD_PREVIEW_PATCH,
   CMD_QUICKROM_DIRECTORY,
   CMD_QUICKROM_FILE,
   CMD_QUICKROM_FROM_CONFIG,
   CMD_QUICKROM_MENU,
+  CMD_SAVE_PATCH,
   CMD_STOP,
   LANGUAGE_ID,
   LSP_ID,
@@ -204,6 +207,87 @@ async function showQuickromMenu(): Promise<void> {
   await vscode.commands.executeCommand(selection.command);
 }
 
+/**
+ * Position the cursor just after the `fm` / `pcm` keyword on
+ * `lineNumber` (1-based here, since this matches the lang-core/LSP wire
+ * line which is 0-based — we add 1 below) and pop the completion list,
+ * giving the user the same UX as `loadPatch` does in web-ctrmml.
+ */
+async function loadPatchAtLine(
+  uri: string,
+  zeroBasedLine: number,
+  type: string,
+): Promise<void> {
+  if (type !== "fm" && type !== "pcm") {
+    return;
+  }
+  const targetUri = vscode.Uri.parse(uri);
+  const document = await vscode.workspace.openTextDocument(targetUri);
+  const editor = await vscode.window.showTextDocument(document);
+  const line = zeroBasedLine; // already 0-based for vscode.Position
+  const text = document.lineAt(line).text;
+  const match = text.match(/^\s*@\d+\s+(fm|pcm)(?:\s|$)/);
+  if (!match) {
+    return;
+  }
+  const keyword = match[1];
+  const kwIndex = match[0].lastIndexOf(keyword);
+  const position = new vscode.Position(line, kwIndex + keyword.length);
+  editor.selection = new vscode.Selection(position, position);
+  editor.revealRange(
+    new vscode.Range(position, position),
+    vscode.TextEditorRevealType.InCenterIfOutsideViewport,
+  );
+  await vscode.commands.executeCommand("editor.action.triggerSuggest");
+}
+
+function registerLensCommands(
+  context: vscode.ExtensionContext,
+  getClient: () => LanguageClient | undefined,
+): void {
+  // The lens click chain is: Monaco code-lens → vscode.commands.executeCommand
+  // ("mml.previewPatch", ...args). We forward to the LSP via the language
+  // client's executeCommand request, mirroring how the built-in playback
+  // commands work. The middleware path doesn't apply here since these
+  // commands aren't registered via the LSP's server-side
+  // executeCommandProvider on the client side — they're emitted as code-lens
+  // commands directly.
+  const forwardToLsp = (command: string) =>
+    vscode.commands.registerCommand(command, async (...args: unknown[]) => {
+      const client = getClient();
+      if (!client) {
+        vscode.window.showWarningMessage(
+          "ctrmml-lsp is not running; lens commands are unavailable.",
+        );
+        return;
+      }
+      await client.sendRequest("workspace/executeCommand", {
+        command,
+        arguments: args,
+      });
+    });
+
+  context.subscriptions.push(
+    forwardToLsp(CMD_PREVIEW_PATCH),
+    vscode.commands.registerCommand(
+      CMD_LOAD_PATCH,
+      async (uri: string, line: unknown, type: unknown) => {
+        const zeroBased = typeof line === "number"
+          ? line
+          : typeof line === "string"
+            ? parseInt(line, 10) || 0
+            : 0;
+        await loadPatchAtLine(uri, zeroBased, String(type));
+      },
+    ),
+    vscode.commands.registerCommand(CMD_SAVE_PATCH, () => {
+      vscode.window.showInformationMessage(
+        "Save patch is not yet supported in vscode-ctrmml — use web-ctrmml for now.",
+      );
+    }),
+  );
+}
+
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<void> {
@@ -285,6 +369,7 @@ export async function activate(
   context.subscriptions.push(client);
 
   registerStatusBarItems(context);
+  registerLensCommands(context, () => client);
 }
 
 export async function deactivate(): Promise<void> {
