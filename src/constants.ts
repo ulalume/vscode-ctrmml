@@ -5,7 +5,7 @@ export const LSP_REPO = "ulalume/language-server-ctrmml";
 // Pin to a known-good language-server release so an upstream release
 // can't silently break the vendored grammar / semantic-token contract.
 // Bump in lockstep with `megamml`'s `wasm-lang-core/build.sh` pin.
-export const LSP_PINNED_TAG = "v0.6.7";
+export const LSP_PINNED_TAG = "v0.6.8";
 export const USER_AGENT = "vscode-ctrmml";
 export const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 export const UPDATE_CHECK_FILENAME = ".ctrmml-lsp-last-check";
