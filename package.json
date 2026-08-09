@@ -153,6 +153,45 @@
           ],
           "default": null,
           "description": "Initialization options for ctrmml-lsp."
+        },
+        "ctrmml.completion.arpeggio.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable arpeggio (broken-chord) completions when typing a note letter on a track line. Applied when the language server starts; reload the window after changing."
+        },
+        "ctrmml.completion.arpeggio.pattern": {
+          "type": "string",
+          "enum": ["up", "down", "updown", "downup", "alberti"],
+          "enumDescriptions": [
+            "Root to top.",
+            "Top to root.",
+            "Up, then back down.",
+            "Down, then back up.",
+            "Alberti bass figure (low, high, middle, high)."
+          ],
+          "default": "up",
+          "markdownDescription": "Traversal pattern for arpeggio completions. Only used when `#ctrmml.completion.arpeggio.enabled#` is on. Applied when the language server starts; reload the window after changing."
+        },
+        "ctrmml.completion.chordStackMode": {
+          "type": "string",
+          "enum": ["stack_up", "plain"],
+          "enumDescriptions": [
+            "Stack chord tones upward from the root, inserting octave marks as needed (e.g. `f/a/>c`).",
+            "Close voicing at the channel octave with no octave marks (e.g. `f/a/c`) — the behavior before language server v0.6.8."
+          ],
+          "default": "stack_up",
+          "markdownDescription": "How chord and dyad completion bodies are voiced. Applied when the language server starts; reload the window after changing."
+        },
+        "ctrmml.completion.fmPickerHierarchy": {
+          "type": "string",
+          "enum": ["auto", "on", "off"],
+          "enumDescriptions": [
+            "Let the server decide from the connecting editor — VS Code gets the two-step picker.",
+            "Two-step picker: choose an instrument file, then a patch inside it.",
+            "Flat list with one completion item per patch, labeled by relative path."
+          ],
+          "default": "auto",
+          "markdownDescription": "Style of the FM instrument picker offered on `@N fm` lines. Applied when the language server starts; reload the window after changing."
         }
       }
     }

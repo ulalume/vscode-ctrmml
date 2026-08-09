@@ -378,6 +378,45 @@ function registerLensCommands(
   );
 }
 
+/** First-class completion settings in the server's snake_case wire form. */
+function completionInitializationOptions(
+  config: vscode.WorkspaceConfiguration
+): Record<string, unknown> {
+  const options: Record<string, unknown> = {
+    arpeggio_enabled: config.get<boolean>("completion.arpeggio.enabled", false),
+    arpeggio_pattern: config.get<string>("completion.arpeggio.pattern", "up"),
+    chord_stack_mode: config.get<string>("completion.chordStackMode", "stack_up"),
+  };
+  // "auto" omits the key entirely so the server falls back to its
+  // editor-based default (VS Code gets the hierarchical picker).
+  const hierarchy = config.get<string>("completion.fmPickerHierarchy", "auto");
+  if (hierarchy === "on" || hierarchy === "off") {
+    options.fm_picker_hierarchy = hierarchy === "on";
+  }
+  return options;
+}
+
+/** Merge first-class completion settings with the raw
+ * `ctrmml.languageServer.initializationOptions` object. The raw object
+ * wins on conflicts; the server accepts snake_case and camelCase keys,
+ * so a field counts as overridden in either spelling. */
+function mergeInitializationOptions(
+  completion: Record<string, unknown>,
+  raw: Record<string, unknown> | null | undefined
+): Record<string, unknown> {
+  if (!raw) {
+    return completion;
+  }
+  const merged: Record<string, unknown> = { ...completion };
+  for (const key of Object.keys(completion)) {
+    const camel = key.replace(/_([a-z])/g, (_, ch: string) => ch.toUpperCase());
+    if (key in raw || camel in raw) {
+      delete merged[key];
+    }
+  }
+  return { ...merged, ...raw };
+}
+
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<void> {
@@ -433,7 +472,10 @@ export async function activate(
 
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: "file", language: LANGUAGE_ID }],
-    initializationOptions: initOptions ?? undefined,
+    initializationOptions: mergeInitializationOptions(
+      completionInitializationOptions(config),
+      initOptions
+    ),
     middleware: {
       executeCommand: (command, args, next) => {
         if (command === CMD_MDSLINK_MENU) {
