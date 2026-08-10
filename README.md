@@ -41,7 +41,7 @@ Settings are read when the language server starts — reload the window after ch
 
 `ctrmml.languageServer.initializationOptions` is merged over the `ctrmml.completion.*` settings and wins per field (snake_case or camelCase spelling), and may also carry other server options such as `command_path` / `ym2612_convert_path`.
 
-### Completion changes in language server v0.6.8
+### Completion changes in language server v0.6.9
 
 - Chord and dyad completion bodies now default to the stacked, octave-carrying form (e.g. `f/a/>c`). Set `ctrmml.completion.chordStackMode` to `plain` to restore the old close voicing (`f/a/c`).
 - Meta values (`#platform`, `#option`, `#timesig`, `#group`) insert with an explicit replace range: accepting a suggestion replaces the value token you were typing instead of appending to it.

@@ -2,7 +2,7 @@
   "name": "vscode-ctrmml",
   "displayName": "ctrmml",
   "description": "Language support for ctrmml",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "publisher": "ulalume",
   "repository": {
     "type": "git",
@@ -177,7 +177,7 @@
           "enum": ["stack_up", "plain"],
           "enumDescriptions": [
             "Stack chord tones upward from the root, inserting octave marks as needed (e.g. `f/a/>c`).",
-            "Close voicing at the channel octave with no octave marks (e.g. `f/a/c`) — the behavior before language server v0.6.8."
+            "Close voicing at the channel octave with no octave marks (e.g. `f/a/c`) — the behavior before language server v0.6.9."
           ],
           "default": "stack_up",
           "markdownDescription": "How chord and dyad completion bodies are voiced. Applied when the language server starts; reload the window after changing."
