@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { getTreeSitterLanguage } from "./treeSitter";
-import { Parser } from "./webTreeSitter";
+import { Parser, type Language, type Node } from "./webTreeSitter";
 
 export const SEMANTIC_TOKEN_TYPES = [
   "comment",
@@ -64,7 +64,7 @@ export class CtrmmlSemanticTokensProvider
     document: vscode.TextDocument,
     token: vscode.CancellationToken
   ): Promise<vscode.SemanticTokens> {
-    let language: Parser.Language;
+    let language: Language;
     try {
       language = await getTreeSitterLanguage(this.context);
     } catch (err) {
@@ -95,7 +95,7 @@ export class CtrmmlSemanticTokensProvider
 }
 
 function collectTokens(
-  node: Parser.Node,
+  node: Node,
   document: vscode.TextDocument,
   builder: vscode.SemanticTokensBuilder
 ): void {

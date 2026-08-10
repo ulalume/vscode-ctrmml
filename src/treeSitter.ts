@@ -1,13 +1,13 @@
 import * as vscode from "vscode";
 import { LANGUAGE_WASM } from "./constants";
 import { fileExists } from "./utils/fs";
-import { Parser } from "./webTreeSitter";
+import { Parser, type Language } from "./webTreeSitter";
 
-let languagePromise: Promise<Parser.Language> | null = null;
+let languagePromise: Promise<Language> | null = null;
 
 export async function getTreeSitterLanguage(
   context: vscode.ExtensionContext
-): Promise<Parser.Language> {
+): Promise<Language> {
   if (languagePromise) {
     return languagePromise;
   }
