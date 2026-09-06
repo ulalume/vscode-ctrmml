@@ -12,6 +12,7 @@ import {
   CMD_MDSLINK_MENU,
   CMD_EXPORT_VGM,
   CMD_EXPORT_WAV,
+  CMD_PATCH_FORMATS,
   CMD_PLAY,
   CMD_PLAY_FROM_CURSOR,
   CMD_PREVIEW_PATCH,
@@ -241,19 +242,63 @@ async function loadPatchAtLine(
   await vscode.commands.executeCommand("editor.action.triggerSuggest");
 }
 
-/** Writable patch formats supported by `ym2612_convert`. Order shapes
- * the order of the format filters in the save dialog. */
-const PATCH_FORMATS: { label: string; ext: string }[] = [
+interface PatchFormat {
+  label: string;
+  ext: string;
+}
+
+/** Shape of one entry in `ctrmml.patchFormats`'s JSON array response. */
+interface RawPatchFormat {
+  format: string;
+  name: string;
+  extension: string;
+  can_read: boolean;
+  can_write: boolean;
+  is_text: boolean;
+}
+
+/** Used when the server doesn't answer `ctrmml.patchFormats` or the
+ * client isn't running — only formats known writable. */
+const FALLBACK_PATCH_FORMATS: PatchFormat[] = [
   { label: "DefleMask Preset (.dmp)", ext: "dmp" },
   { label: "Furnace Instrument (.fui)", ext: "fui" },
-  { label: "TFI (.tfi)", ext: "tfi" },
-  { label: "OPM (.opm)", ext: "opm" },
   { label: "GIN (.gin)", ext: "gin" },
-  { label: "GIN Package (.ginpkg)", ext: "ginpkg" },
-  { label: "Rym2612 (.rym2612)", ext: "rym2612" },
-  { label: "Furnace Module (.fur)", ext: "fur" },
+  { label: "TFI (.tfi)", ext: "tfi" },
+  { label: "VGI (.vgi)", ext: "vgi" },
+  { label: "EIF (.eif)", ext: "eif" },
   { label: "ctrmml (.mml)", ext: "mml" },
 ];
+
+/** `ctrmml.patchFormats` result, cached per client instance. */
+let patchFormatsCache: { client: LanguageClient; formats: PatchFormat[] } | undefined;
+
+/** Writable patch formats in the library's canonical order, fetched from
+ * the server's `ctrmml.patchFormats` command and cached per client
+ * session. Falls back to a static list if the request fails, the
+ * response is unusable, or no client is running. */
+async function getPatchFormats(
+  client: LanguageClient | undefined,
+): Promise<PatchFormat[]> {
+  if (!client) return FALLBACK_PATCH_FORMATS;
+  if (patchFormatsCache && patchFormatsCache.client === client) {
+    return patchFormatsCache.formats;
+  }
+  try {
+    const result = await client.sendRequest("workspace/executeCommand", {
+      command: CMD_PATCH_FORMATS,
+      arguments: [],
+    });
+    if (!Array.isArray(result)) throw new Error("unexpected response shape");
+    const formats: PatchFormat[] = (result as RawPatchFormat[])
+      .filter((f) => f && f.can_write === true)
+      .map((f) => ({ label: `${f.name} (.${f.extension})`, ext: f.extension }));
+    if (formats.length === 0) throw new Error("no writable formats");
+    patchFormatsCache = { client, formats };
+    return formats;
+  } catch {
+    return FALLBACK_PATCH_FORMATS;
+  }
+}
 
 /** Pick a save target via the native file dialog, returning `{path,
  * format}` or `null` if the user cancelled. The default filename
@@ -261,18 +306,20 @@ const PATCH_FORMATS: { label: string; ext: string }[] = [
 async function pickPatchSaveTarget(
   uri: string,
   instrumentNumber: number,
+  client: LanguageClient | undefined,
 ): Promise<{ path: string; format: string } | null> {
+  const patchFormats = await getPatchFormats(client);
   const sourceUri = vscode.Uri.parse(uri);
   const sourceName = sourceUri.path.split("/").pop() ?? "";
   const stem = sourceName.replace(/\.mml$/i, "") || "patch";
-  const defaultName = `${stem}_@${instrumentNumber}.${PATCH_FORMATS[0].ext}`;
+  const defaultName = `${stem}_@${instrumentNumber}.${patchFormats[0].ext}`;
   const defaultUri = vscode.Uri.joinPath(
     vscode.Uri.parse(uri).with({ path: sourceUri.path.replace(/\/[^/]*$/, "") }),
     defaultName,
   );
 
   const filters: Record<string, string[]> = {};
-  for (const f of PATCH_FORMATS) filters[f.label] = [f.ext];
+  for (const f of patchFormats) filters[f.label] = [f.ext];
 
   const picked = await vscode.window.showSaveDialog({
     defaultUri,
@@ -283,7 +330,7 @@ async function pickPatchSaveTarget(
   if (!picked) return null;
   const ext = (picked.path.split(".").pop() ?? "").toLowerCase();
   const format =
-    PATCH_FORMATS.find((f) => f.ext === ext)?.ext ?? PATCH_FORMATS[0].ext;
+    patchFormats.find((f) => f.ext === ext)?.ext ?? patchFormats[0].ext;
   return { path: picked.fsPath, format };
 }
 
@@ -362,7 +409,7 @@ function registerLensCommands(
           vscode.Uri.parse(uri),
         );
         const number = readInstrumentNumber(document, zeroBased) ?? 1;
-        const target = await pickPatchSaveTarget(uri, number);
+        const target = await pickPatchSaveTarget(uri, number, client);
         if (!target) return;
         try {
           await client.sendRequest("workspace/executeCommand", {

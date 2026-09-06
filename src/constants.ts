@@ -22,6 +22,7 @@ export const CMD_QUICKROM_FILE = "ctrmml.quickromFile";
 export const CMD_QUICKROM_DIRECTORY = "ctrmml.quickromDirectory";
 export const CMD_QUICKROM_FROM_CONFIG = "ctrmml.quickromFromConfig";
 export const CMD_QUICKROM_MENU = "ctrmml.quickromMenu";
+export const CMD_PATCH_FORMATS = "ctrmml.patchFormats";
 
 // Code-lens lens command IDs. These match the titles emitted by the LSP's
 // `textDocument/codeLens` response so the click chain
