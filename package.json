@@ -2,7 +2,7 @@
   "name": "vscode-ctrmml",
   "displayName": "ctrmml",
   "description": "Language support for ctrmml",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "ulalume",
   "repository": {
     "type": "git",
@@ -161,7 +161,13 @@
         },
         "ctrmml.completion.arpeggio.pattern": {
           "type": "string",
-          "enum": ["up", "down", "updown", "downup", "alberti"],
+          "enum": [
+            "up",
+            "down",
+            "updown",
+            "downup",
+            "alberti"
+          ],
           "enumDescriptions": [
             "Root to top.",
             "Top to root.",
@@ -174,7 +180,10 @@
         },
         "ctrmml.completion.chordStackMode": {
           "type": "string",
-          "enum": ["stack_up", "plain"],
+          "enum": [
+            "stack_up",
+            "plain"
+          ],
           "enumDescriptions": [
             "Stack chord tones upward from the root, inserting octave marks as needed (e.g. `f/a/>c`).",
             "Close voicing at the channel octave with no octave marks (e.g. `f/a/c`) — the behavior before language server v0.6.9."
@@ -184,7 +193,11 @@
         },
         "ctrmml.completion.fmPickerHierarchy": {
           "type": "string",
-          "enum": ["auto", "on", "off"],
+          "enum": [
+            "auto",
+            "on",
+            "off"
+          ],
           "enumDescriptions": [
             "Let the server decide from the connecting editor — VS Code gets the two-step picker.",
             "Two-step picker: choose an instrument file, then a patch inside it.",
