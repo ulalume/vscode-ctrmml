@@ -18,13 +18,9 @@ export async function getTreeSitterLanguage(
     try {
       return await Parser.Language.load(wasmPath);
     } catch (err) {
-      const message = errorMessage(err);
-      if (message.includes("libc.so") || message.includes("libc++")) {
-        throw new Error(
-          "tree-sitter wasm was built without --reuse-allocator. Rebuild with `tree-sitter build --wasm --reuse-allocator`."
-        );
-      }
-      throw err;
+      throw new Error(
+        `cannot load ${LANGUAGE_WASM}: ${errorMessage(err)}. Rebuild it with \`npm run build:grammar\`.`
+      );
     }
   })();
   languagePromise = promise;
