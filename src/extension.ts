@@ -36,7 +36,11 @@ import { fileExists } from "./utils/fs";
 let client: LanguageClient | undefined;
 /** Serializes client starts and stops. */
 let clientQueue: Promise<void> = Promise.resolve();
+let restartPending = false;
 let outputChannel: vscode.OutputChannel | undefined;
+
+/** Settings changes within this interval cause one restart. */
+const CONFIG_RESTART_DELAY_MS = 400;
 
 const CMD_STATUS_RUN = "ctrmml.status.run";
 const CMD_STATUS_EXPORT_MENU = "ctrmml.status.exportMenu";
@@ -502,6 +506,7 @@ export async function activate(
   registerLensCommands(context);
 
   outputChannel = vscode.window.createOutputChannel("ctrmml language server");
+  let configTimer: ReturnType<typeof setTimeout> | undefined;
   context.subscriptions.push(
     outputChannel,
     vscode.workspace.onDidChangeConfiguration((event) => {
@@ -509,15 +514,27 @@ export async function activate(
         event.affectsConfiguration("ctrmml.languageServer") ||
         event.affectsConfiguration("ctrmml.completion")
       ) {
-        void restartClient(context);
+        clearTimeout(configTimer);
+        configTimer = setTimeout(
+          () => void restartClient(context),
+          CONFIG_RESTART_DELAY_MS
+        );
       }
-    })
+    }),
+    { dispose: () => clearTimeout(configTimer) }
   );
   await restartClient(context);
 }
 
+/** Queue a restart unless one is already waiting; it reads the settings
+ * when it starts. */
 function restartClient(context: vscode.ExtensionContext): Promise<void> {
+  if (restartPending) {
+    return clientQueue;
+  }
+  restartPending = true;
   clientQueue = clientQueue.then(async () => {
+    restartPending = false;
     await stopClient();
     await startClient(context);
   });
