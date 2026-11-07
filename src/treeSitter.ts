@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { LANGUAGE_WASM } from "./constants";
+import { errorMessage } from "./utils/error";
 import { fileExists } from "./utils/fs";
 import { Parser, type Language } from "./webTreeSitter";
 
@@ -17,7 +18,7 @@ export async function getTreeSitterLanguage(
     try {
       return await Parser.Language.load(wasmPath);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       if (message.includes("libc.so") || message.includes("libc++")) {
         throw new Error(
           "tree-sitter wasm was built without --reuse-allocator. Rebuild with `tree-sitter build --wasm --reuse-allocator`."

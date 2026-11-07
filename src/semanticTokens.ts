@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { getTreeSitterLanguage } from "./treeSitter";
+import { errorMessage } from "./utils/error";
 import {
   Parser,
   type Language,
@@ -83,9 +84,8 @@ export class CtrmmlSemanticTokensProvider
       language = await getTreeSitterLanguage(this.context);
     } catch (err) {
       if (!treeSitterErrorShown) {
-        const message = err instanceof Error ? err.message : String(err);
         vscode.window.showWarningMessage(
-          `ctrmml highlight disabled: ${message}`
+          `ctrmml highlight disabled: ${errorMessage(err)}`
         );
         treeSitterErrorShown = true;
       }

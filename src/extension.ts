@@ -31,6 +31,7 @@ import {
   CtrmmlSemanticTokensProvider,
   SEMANTIC_TOKEN_TYPES,
 } from "./semanticTokens";
+import { errorMessage } from "./utils/error";
 import { fileExists } from "./utils/fs";
 
 let client: LanguageClient | undefined;
@@ -339,34 +340,17 @@ function registerLensCommands(context: vscode.ExtensionContext): void {
   // owns we forward the request via the language client; for ones that
   // need native UI (Load triggers completion, Save prompts a file
   // dialog) we handle them here and then optionally call the LSP.
-  const forwardToLsp = (command: string) =>
-    vscode.commands.registerCommand(command, async (...args: unknown[]) => {
-      const client = requireClient();
-      if (!client) {
-        return;
-      }
-      try {
-        await client.sendRequest("workspace/executeCommand", {
-          command,
-          arguments: args,
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        vscode.window.showErrorMessage(`${command} failed: ${message}`);
-      }
-    });
-
   context.subscriptions.push(
-    forwardToLsp(CMD_PREVIEW_PATCH),
+    vscode.commands.registerCommand(CMD_PREVIEW_PATCH, async (...args) => {
+      const client = requireClient();
+      if (client) {
+        await executeOnServer(client, CMD_PREVIEW_PATCH, CMD_PREVIEW_PATCH, args);
+      }
+    }),
     vscode.commands.registerCommand(
       CMD_LOAD_PATCH,
       async (uri: string, line: unknown, type: unknown) => {
-        const zeroBased = typeof line === "number"
-          ? line
-          : typeof line === "string"
-            ? parseInt(line, 10) || 0
-            : 0;
-        await loadPatchAtLine(uri, zeroBased, String(type));
+        await loadPatchAtLine(uri, lensLine(line), String(type));
       },
     ),
     vscode.commands.registerCommand(
@@ -380,11 +364,7 @@ function registerLensCommands(context: vscode.ExtensionContext): void {
           );
           return;
         }
-        const zeroBased = typeof line === "number"
-          ? line
-          : typeof line === "string"
-            ? parseInt(line, 10) || 0
-            : 0;
+        const zeroBased = lensLine(line);
         const client = requireClient();
         if (!client) {
           return;
@@ -395,18 +375,46 @@ function registerLensCommands(context: vscode.ExtensionContext): void {
         const number = readInstrumentHeader(document, zeroBased)?.number ?? 1;
         const target = await pickPatchSaveTarget(uri, number, client);
         if (!target) return;
-        try {
-          await client.sendRequest("workspace/executeCommand", {
-            command: CMD_SAVE_PATCH,
-            arguments: [uri, zeroBased, type, target.path, target.format],
-          });
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          vscode.window.showErrorMessage(`Save patch failed: ${message}`);
-        }
+        await executeOnServer(client, "Save patch", CMD_SAVE_PATCH, [
+          uri,
+          zeroBased,
+          type,
+          target.path,
+          target.format,
+        ]);
       },
     ),
   );
+}
+
+/** 0-based line from a code-lens argument. */
+function lensLine(arg: unknown): number {
+  if (typeof arg === "number") {
+    return arg;
+  }
+  if (typeof arg === "string") {
+    return parseInt(arg, 10) || 0;
+  }
+  return 0;
+}
+
+/** Run a server command and return its result; a failure is shown as
+ * `<label> failed: …` and returns `undefined`. */
+async function executeOnServer(
+  client: LanguageClient,
+  label: string,
+  command: string,
+  args: unknown[]
+): Promise<unknown> {
+  try {
+    return await client.sendRequest("workspace/executeCommand", {
+      command,
+      arguments: args,
+    });
+  } catch (err) {
+    vscode.window.showErrorMessage(`${label} failed: ${errorMessage(err)}`);
+    return undefined;
+  }
 }
 
 /** First-class completion settings in the server's snake_case wire form. */
@@ -529,8 +537,9 @@ async function startClient(context: vscode.ExtensionContext): Promise<void> {
     try {
       command = await ensureServerBinary(context.globalStorageUri.fsPath);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      vscode.window.showErrorMessage(`ctrmml-lsp download failed: ${message}`);
+      vscode.window.showErrorMessage(
+        `ctrmml-lsp download failed: ${errorMessage(err)}`
+      );
       return;
     }
   }
