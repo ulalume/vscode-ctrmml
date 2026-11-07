@@ -26,7 +26,7 @@ If you prefer Zed, see https://github.com/ulalume/zed-ctrmml
 
 ## Settings
 
-Changing a setting restarts the language server.
+Changing `ctrmml.languageServer.path`, `args` or `env` restarts the language server. The completion settings and `command_path` apply without a restart; other `initializationOptions` keys apply after reloading the window.
 
 | Setting | Default | Description |
 | --- | --- | --- |
