@@ -53,8 +53,10 @@ const TOKEN_TYPE_BY_NODE: Record<
 let treeSitterErrorShown = false;
 
 export class CtrmmlSemanticTokensProvider
-  implements vscode.DocumentSemanticTokensProvider
+  implements vscode.DocumentSemanticTokensProvider, vscode.Disposable
 {
+  private parser: InstanceType<typeof Parser.Parser> | undefined;
+
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly legend: vscode.SemanticTokensLegend
@@ -82,15 +84,26 @@ export class CtrmmlSemanticTokensProvider
       return new vscode.SemanticTokens(new Uint32Array());
     }
 
-    const parser = new Parser.Parser();
-    parser.setLanguage(language);
-    const tree = parser.parse(document.getText());
+    if (!this.parser) {
+      this.parser = new Parser.Parser();
+      this.parser.setLanguage(language);
+    }
+    const tree = this.parser.parse(document.getText());
     if (!tree) {
       return new vscode.SemanticTokens(new Uint32Array());
     }
-    const builder = new vscode.SemanticTokensBuilder(this.legend);
-    collectTokens(tree.rootNode, document, builder);
-    return builder.build();
+    try {
+      const builder = new vscode.SemanticTokensBuilder(this.legend);
+      collectTokens(tree.rootNode, document, builder);
+      return builder.build();
+    } finally {
+      tree.delete();
+    }
+  }
+
+  dispose(): void {
+    this.parser?.delete();
+    this.parser = undefined;
   }
 }
 

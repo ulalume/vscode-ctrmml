@@ -471,10 +471,15 @@ export async function activate(
     [...SEMANTIC_TOKEN_TYPES],
     []
   );
+  const semanticTokens = new CtrmmlSemanticTokensProvider(
+    context,
+    semanticLegend
+  );
   context.subscriptions.push(
+    semanticTokens,
     vscode.languages.registerDocumentSemanticTokensProvider(
       { scheme: "file", language: LANGUAGE_ID },
-      new CtrmmlSemanticTokensProvider(context, semanticLegend),
+      semanticTokens,
       semanticLegend
     )
   );
