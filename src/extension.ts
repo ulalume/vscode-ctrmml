@@ -25,7 +25,6 @@ import {
   LANGUAGE_ID,
   LSP_ID,
 } from "./constants";
-import { readInstrumentHeader } from "./instrumentHeader";
 import { ensureServerBinary } from "./lsp";
 import {
   CtrmmlSemanticTokensProvider,
@@ -218,14 +217,16 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
 }
 
 /**
- * Position the cursor just after the `fm` / `pcm` keyword of the `@N`
- * header on `zeroBasedLine` and pop the completion list, giving the user
- * the same UX as `loadPatch` does in web-ctrmml.
+ * Position the cursor just after the `fm` / `pcm` keyword of an `@N`
+ * header, at the keyword's line and end from the lens, and pop the
+ * completion list, giving the user the same UX as `loadPatch` does in
+ * web-ctrmml.
  */
-async function loadPatchAtLine(
+async function loadPatchAtKeyword(
   uri: string,
-  zeroBasedLine: number,
   type: string,
+  keywordLine: number,
+  keywordEnd: number,
 ): Promise<void> {
   if (type !== "fm" && type !== "pcm") {
     return;
@@ -233,13 +234,8 @@ async function loadPatchAtLine(
   const targetUri = vscode.Uri.parse(uri);
   const document = await vscode.workspace.openTextDocument(targetUri);
   const editor = await vscode.window.showTextDocument(document);
-  const header = readInstrumentHeader(document, zeroBasedLine);
-  if (!header || header.keyword.toLowerCase() !== type) {
-    return;
-  }
-  const position = new vscode.Position(
-    header.line,
-    header.start + header.keyword.length,
+  const position = document.validatePosition(
+    new vscode.Position(keywordLine, keywordEnd),
   );
   editor.selection = new vscode.Selection(position, position);
   editor.revealRange(
@@ -286,7 +282,7 @@ async function getPatchFormats(client: LanguageClient): Promise<PatchFormat[]> {
  * default filename follows web-ctrmml's convention `<basename>_@<N>.<ext>`. */
 async function pickPatchSaveTarget(
   uri: string,
-  instrumentNumber: number,
+  instrumentNumber: string,
   client: LanguageClient,
 ): Promise<{ path: string; format: string } | null> {
   const patchFormats = await getPatchFormats(client);
@@ -325,29 +321,37 @@ function registerLensCommands(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand(
       CMD_LOAD_PATCH,
-      async (uri: string, line: unknown, type: unknown) => {
-        await loadPatchAtLine(uri, lensLine(line), String(type));
+      async (
+        uri: string,
+        _line: unknown,
+        type: unknown,
+        _number: unknown,
+        keywordLine: unknown,
+        keywordEnd: unknown,
+      ) => {
+        await loadPatchAtKeyword(
+          uri,
+          String(type),
+          lensNumber(keywordLine),
+          lensNumber(keywordEnd),
+        );
       },
     ),
     vscode.commands.registerCommand(
       CMD_SAVE_PATCH,
-      async (uri: string, line: unknown, type: unknown) => {
+      async (uri: string, line: unknown, type: unknown, number: unknown) => {
         if (type !== "fm") {
           vscode.window.showInformationMessage(
             "Only @N fm blocks can be exported as patches.",
           );
           return;
         }
-        const zeroBased = lensLine(line);
+        const zeroBased = lensNumber(line);
         const client = requireClient();
         if (!client) {
           return;
         }
-        const document = await vscode.workspace.openTextDocument(
-          vscode.Uri.parse(uri),
-        );
-        const number = readInstrumentHeader(document, zeroBased)?.number ?? 1;
-        const target = await pickPatchSaveTarget(uri, number, client);
+        const target = await pickPatchSaveTarget(uri, String(number), client);
         if (!target) return;
         await executeOnServer(client, "Save patch", CMD_SAVE_PATCH, [
           uri,
@@ -361,8 +365,8 @@ function registerLensCommands(context: vscode.ExtensionContext): void {
   );
 }
 
-/** 0-based line from a code-lens argument. */
-function lensLine(arg: unknown): number {
+/** A line or character from a code-lens argument. */
+function lensNumber(arg: unknown): number {
   if (typeof arg === "number") {
     return arg;
   }
