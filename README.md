@@ -62,6 +62,15 @@ Or use the UI:
 
 - Extensions view -> "..." menu -> Install from VSIX...
 
+## Build
+
+```sh
+npm ci
+npm run compile
+```
+
+`npm run compile` also builds `tree-sitter-ctrmml.wasm` from the grammar revision in `package.json` (`treeSitterCtrmml.rev`) with the tree-sitter CLI from `devDependencies`. The first build needs git and network access.
+
 ## Dependencies
 
 - tree-sitter: https://github.com/ulalume/tree-sitter-ctrmml
