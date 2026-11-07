@@ -180,7 +180,7 @@
             "off"
           ],
           "enumDescriptions": [
-            "Let the server decide from the connecting editor — VS Code gets the two-step picker.",
+            "Default for VS Code: the two-step picker.",
             "Two-step picker: choose an instrument file, then a patch inside it.",
             "Flat list with one completion item per patch, labeled by relative path."
           ],

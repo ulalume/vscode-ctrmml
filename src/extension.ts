@@ -449,6 +449,19 @@ function restartClient(context: vscode.ExtensionContext): Promise<void> {
   return clientQueue;
 }
 
+/** What this extension handles itself. camelCase so that a key in
+ * `ctrmml.languageServer.initializationOptions` wins in either spelling:
+ * the server reads snake_case first. */
+const CLIENT_OPTIONS = {
+  codeLensIcons: "codicon",
+  codeLensFileActions: true,
+  // Play, stop, export, quickrom and mdslink are on the status bar.
+  commandCodeActions: false,
+  clientCommands: [CMD_PREVIEW_PATCH, CMD_LOAD_PATCH, CMD_SAVE_PATCH],
+  // What `ctrmml.completion.fmPickerHierarchy: "auto"` means.
+  fmPickerHierarchy: true,
+};
+
 async function startClient(context: vscode.ExtensionContext): Promise<void> {
   const config = vscode.workspace.getConfiguration("ctrmml");
   const customPath = config.get<string>("languageServer.path")?.trim();
@@ -492,7 +505,7 @@ async function startClient(context: vscode.ExtensionContext): Promise<void> {
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: "file", language: LANGUAGE_ID }],
     outputChannel,
-    initializationOptions: initOptions ?? undefined,
+    initializationOptions: { ...CLIENT_OPTIONS, ...initOptions },
     middleware: {
       executeCommand: (command, args, next) => {
         if (command === CMD_MDSLINK_MENU) {

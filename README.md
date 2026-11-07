@@ -13,12 +13,11 @@ If you prefer Zed, see https://github.com/ulalume/zed-ctrmml
 - Chord, dyad, and (opt-in) arpeggio completions on track lines; chord bodies are stacked upward by default.
 - Measure fill: typing `|` offers rests to complete the current measure.
 - FM instrument completion: auto-scan workspace for instrument files (.dmp, .fui, .fur, .gin, .ginpkg, etc.) and insert FM parameters as MML. Multi-patch files use two-step selection (file → patch). Re-picking a patch replaces the previously inserted parameter block.
-- Code Actions: play, play from cursor, stop, export vgm/wav, mdslink, quickrom.
+- Status bar and Command Palette: play, play from cursor, stop, export vgm/wav, mdslink, quickrom.
 
 ## Usage
 
-- Code Actions: macOS `Cmd + .`, Windows/Linux `Ctrl + .`.
-- Run commands from the Code Actions list in an `.mml` file.
+- Run commands from the status bar or the Command Palette in an `.mml` file.
 - Default keyboard shortcuts:
   - Play: macOS `Cmd + Alt + Shift + P`, Windows/Linux `Ctrl + Alt + Shift + P`.
   - Play from cursor: macOS `Cmd + Alt + P`, Windows/Linux `Ctrl + Alt + P`.
@@ -37,7 +36,7 @@ Changing `ctrmml.languageServer.path`, `args` or `env` restarts the language ser
 | `ctrmml.completion.arpeggio.enabled` | `false` | Enable arpeggio (broken-chord) completions when typing a note letter on a track line. |
 | `ctrmml.completion.arpeggio.pattern` | `"up"` | Traversal pattern for arpeggio completions: `up`, `down`, `updown`, `downup`, or `alberti`. Only used when arpeggio is enabled. |
 | `ctrmml.completion.chordStackMode` | `"stack_up"` | How chord and dyad completion bodies are voiced: `stack_up` (octave-carrying) or `plain` (close voicing). |
-| `ctrmml.completion.fmPickerHierarchy` | `"auto"` | Style of the FM instrument picker on `@N fm` lines. `auto` lets the server decide (VS Code gets the two-step file → patch picker); `on`/`off` force it. |
+| `ctrmml.completion.fmPickerHierarchy` | `"auto"` | Style of the FM instrument picker on `@N fm` lines. `auto` and `on` give the two-step file → patch picker, `off` a flat list. |
 
 `ctrmml.languageServer.initializationOptions` is merged over the `ctrmml.completion.*` settings and wins per field (snake_case or camelCase spelling), and may also carry other server options such as `command_path`.
 
