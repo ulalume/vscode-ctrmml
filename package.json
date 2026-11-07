@@ -190,9 +190,14 @@
       }
     }
   },
+  "treeSitterCtrmml": {
+    "repository": "https://github.com/ulalume/tree-sitter-ctrmml",
+    "rev": "335ed0bdfc6169219740fc4ce4d3f0a8e33d5f6a"
+  },
   "scripts": {
-    "compile": "esbuild src/extension.ts --bundle --platform=node --target=node18 --format=cjs --outfile=out/extension.js --sourcemap --minify --legal-comments=none --external:vscode && node scripts/copy-web-tree-sitter-wasm.js",
-    "watch": "node scripts/copy-web-tree-sitter-wasm.js && esbuild src/extension.ts --bundle --platform=node --target=node18 --format=cjs --outfile=out/extension.js --sourcemap --external:vscode --watch",
+    "build:grammar": "node scripts/build-grammar-wasm.js",
+    "compile": "npm run build:grammar && esbuild src/extension.ts --bundle --platform=node --target=node18 --format=cjs --outfile=out/extension.js --sourcemap --minify --legal-comments=none --external:vscode && node scripts/copy-web-tree-sitter-wasm.js",
+    "watch": "npm run build:grammar && node scripts/copy-web-tree-sitter-wasm.js && esbuild src/extension.ts --bundle --platform=node --target=node18 --format=cjs --outfile=out/extension.js --sourcemap --external:vscode --watch",
     "typecheck": "tsc -p ./ --noEmit"
   },
   "dependencies": {
@@ -207,6 +212,7 @@
     "@types/tar": "^6.1.10",
     "@types/vscode": "^1.85.0",
     "esbuild": "^0.25.12",
+    "tree-sitter-cli": "0.26.3",
     "typescript": "^5.3.3"
   }
 }
