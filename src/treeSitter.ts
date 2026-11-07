@@ -11,7 +11,7 @@ export async function getTreeSitterLanguage(
   if (languagePromise) {
     return languagePromise;
   }
-  languagePromise = (async () => {
+  const promise = (async () => {
     await Parser.Parser.init();
     const wasmPath = await resolveLanguageWasmPath(context);
     try {
@@ -26,7 +26,13 @@ export async function getTreeSitterLanguage(
       throw err;
     }
   })();
-  return languagePromise;
+  languagePromise = promise;
+  promise.catch(() => {
+    if (languagePromise === promise) {
+      languagePromise = null;
+    }
+  });
+  return promise;
 }
 
 async function resolveLanguageWasmPath(
