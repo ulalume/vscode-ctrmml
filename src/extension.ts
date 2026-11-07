@@ -257,66 +257,38 @@ interface RawPatchFormat {
   is_text: boolean;
 }
 
-/** Used when the server doesn't answer `ctrmml.patchFormats` or the
- * client isn't running — only formats known writable. */
-const FALLBACK_PATCH_FORMATS: PatchFormat[] = [
-  { label: "DefleMask Preset (.dmp)", ext: "dmp" },
-  { label: "Furnace Instrument (.fui)", ext: "fui" },
-  { label: "GIN (.gin)", ext: "gin" },
-  { label: "TFI (.tfi)", ext: "tfi" },
-  { label: "VGI (.vgi)", ext: "vgi" },
-  { label: "EIF (.eif)", ext: "eif" },
-  { label: "ctrmml (.mml)", ext: "mml" },
-];
-
-/** `ctrmml.patchFormats` result, cached per client instance. */
-let patchFormatsCache: { client: LanguageClient; formats: PatchFormat[] } | undefined;
-
-/** Writable patch formats in the library's canonical order, fetched from
- * the server's `ctrmml.patchFormats` command and cached per client
- * session. Falls back to a static list if the request fails, the
- * response is unusable, or no client is running. */
-async function getPatchFormats(
-  client: LanguageClient | undefined,
-): Promise<PatchFormat[]> {
-  if (!client) return FALLBACK_PATCH_FORMATS;
-  if (patchFormatsCache && patchFormatsCache.client === client) {
-    return patchFormatsCache.formats;
+/** Writable patch formats in the library's canonical order, from the
+ * server's `ctrmml.patchFormats`; empty when the request failed. */
+async function getPatchFormats(client: LanguageClient): Promise<PatchFormat[]> {
+  const result = await executeOnServer(
+    client,
+    "Save patch",
+    CMD_PATCH_FORMATS,
+    []
+  );
+  if (!Array.isArray(result)) {
+    return [];
   }
-  try {
-    const result = await client.sendRequest("workspace/executeCommand", {
-      command: CMD_PATCH_FORMATS,
-      arguments: [],
-    });
-    if (!Array.isArray(result)) throw new Error("unexpected response shape");
-    const formats: PatchFormat[] = (result as RawPatchFormat[])
-      .filter((f) => f && f.can_write === true)
-      .map((f) => ({ label: `${f.name} (.${f.extension})`, ext: f.extension }));
-    if (formats.length === 0) throw new Error("no writable formats");
-    patchFormatsCache = { client, formats };
-    return formats;
-  } catch {
-    return FALLBACK_PATCH_FORMATS;
-  }
+  return (result as RawPatchFormat[])
+    .filter((f) => f.can_write)
+    .map((f) => ({ label: `${f.name} (.${f.extension})`, ext: f.extension }));
 }
 
 /** Pick a save target via the native file dialog, returning `{path,
- * format}` or `null` if the user cancelled. The default filename
- * follows web-ctrmml's convention `<basename>_@<N>.<ext>`. */
+ * format}`, or `null` when cancelled or no format is available. The
+ * default filename follows web-ctrmml's convention `<basename>_@<N>.<ext>`. */
 async function pickPatchSaveTarget(
   uri: string,
   instrumentNumber: number,
-  client: LanguageClient | undefined,
+  client: LanguageClient,
 ): Promise<{ path: string; format: string } | null> {
   const patchFormats = await getPatchFormats(client);
+  if (patchFormats.length === 0) return null;
   const sourceUri = vscode.Uri.parse(uri);
   const sourceName = sourceUri.path.split("/").pop() ?? "";
   const stem = sourceName.replace(/\.mml$/i, "") || "patch";
   const defaultName = `${stem}_@${instrumentNumber}.${patchFormats[0].ext}`;
-  const defaultUri = vscode.Uri.joinPath(
-    vscode.Uri.parse(uri).with({ path: sourceUri.path.replace(/\/[^/]*$/, "") }),
-    defaultName,
-  );
+  const defaultUri = vscode.Uri.joinPath(sourceUri, "..", defaultName);
 
   const filters: Record<string, string[]> = {};
   for (const f of patchFormats) filters[f.label] = [f.ext];
