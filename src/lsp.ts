@@ -3,8 +3,6 @@ import * as fsp from "fs/promises";
 import * as https from "https";
 import * as path from "path";
 import { pipeline } from "stream/promises";
-import AdmZip from "adm-zip";
-import * as tar from "tar";
 import { LSP_ID, LSP_PINNED_TAG, LSP_REPO, USER_AGENT } from "./constants";
 import { fileExists } from "./utils/fs";
 
@@ -162,20 +160,19 @@ function downloadFile(
   });
 }
 
+/** The archive libraries are loaded here so activation does not load them. */
 async function extractArchive(
   archivePath: string,
   destDir: string,
   ext: ArchiveExt
 ): Promise<void> {
   if (ext === "zip") {
-    const zip = new AdmZip(archivePath);
-    zip.extractAllTo(destDir, true);
+    const { default: AdmZip } = await import("adm-zip");
+    new AdmZip(archivePath).extractAllTo(destDir, true);
     return;
   }
-  await tar.x({
-    file: archivePath,
-    cwd: destDir,
-  });
+  const tar = await import("tar");
+  await tar.x({ file: archivePath, cwd: destDir });
 }
 
 async function makeExecutable(filePath: string): Promise<void> {
