@@ -25,33 +25,53 @@ import {
   LANGUAGE_ID,
   LSP_ID,
 } from "./constants";
+import { readInstrumentHeader } from "./instrumentHeader";
 import { ensureServerBinary } from "./lsp";
 import {
   CtrmmlSemanticTokensProvider,
   SEMANTIC_TOKEN_TYPES,
 } from "./semanticTokens";
+import { errorMessage } from "./utils/error";
 import { fileExists } from "./utils/fs";
 
 let client: LanguageClient | undefined;
+/** Serializes client starts and stops. */
+let clientQueue: Promise<void> = Promise.resolve();
+let restartPending = false;
+let outputChannel: vscode.OutputChannel | undefined;
 
+/** Settings changes within this interval cause one restart. */
+const CONFIG_RESTART_DELAY_MS = 400;
+
+const CMD_STATUS_RUN = "ctrmml.status.run";
 const CMD_STATUS_EXPORT_MENU = "ctrmml.status.exportMenu";
-const CMD_STATUS_MDSLINK_MENU = "ctrmml.status.mdslinkMenu";
-const CMD_STATUS_QUICKROM_MENU = "ctrmml.status.quickromMenu";
 
 const COMMANDS_NEED_URI = new Set([
   CMD_MDSLINK_FILE,
   CMD_MDSLINK_DIRECTORY,
   CMD_MDSLINK_FROM_CONFIG,
-  CMD_MDSLINK_MENU,
   CMD_QUICKROM_FILE,
   CMD_QUICKROM_DIRECTORY,
   CMD_QUICKROM_FROM_CONFIG,
-  CMD_QUICKROM_MENU,
   CMD_PLAY,
   CMD_PLAY_FROM_CURSOR,
   CMD_EXPORT_VGM,
   CMD_EXPORT_WAV,
 ]);
+
+/** The running client, or `undefined` after telling the user it is not. */
+function requireClient(): LanguageClient | undefined {
+  if (client?.isRunning()) {
+    return client;
+  }
+  vscode.window.showWarningMessage("ctrmml language server is not running.");
+  return undefined;
+}
+
+/** Status bar command that runs a server command once the client is up. */
+function serverCommand(command: string): vscode.Command {
+  return { title: command, command: CMD_STATUS_RUN, arguments: [command] };
+}
 
 function resolveCommandArgs(command: string, args: any[]): any[] {
   if (args.length > 0 || !COMMANDS_NEED_URI.has(command)) {
@@ -71,148 +91,129 @@ function resolveCommandArgs(command: string, args: any[]): any[] {
   return [uri];
 }
 
+interface StatusItem {
+  priority: number;
+  text: string;
+  tooltip: string;
+  command: string | vscode.Command;
+}
+
+const STATUS_ITEMS: StatusItem[] = [
+  {
+    priority: 100,
+    text: "$(play) Play",
+    tooltip: "ctrmml: play",
+    command: serverCommand(CMD_PLAY),
+  },
+  {
+    priority: 95,
+    text: "$(play-circle) Play Cursor",
+    tooltip: "ctrmml: play from cursor",
+    command: serverCommand(CMD_PLAY_FROM_CURSOR),
+  },
+  {
+    priority: 90,
+    text: "$(stop) Stop",
+    tooltip: "ctrmml: stop",
+    command: serverCommand(CMD_STOP),
+  },
+  {
+    priority: 80,
+    text: "$(save) Export",
+    tooltip: "ctrmml: export",
+    command: CMD_STATUS_EXPORT_MENU,
+  },
+  {
+    priority: 70,
+    text: "$(package) QuickROM",
+    tooltip: "ctrmml: quickrom",
+    command: serverCommand(CMD_QUICKROM_MENU),
+  },
+  {
+    priority: 60,
+    text: "$(link) Mdslink",
+    tooltip: "ctrmml: mdslink",
+    command: serverCommand(CMD_MDSLINK_MENU),
+  },
+];
+
+interface MenuItem extends vscode.QuickPickItem {
+  command: string;
+}
+
+const EXPORT_MENU: MenuItem[] = [
+  { label: "Export VGM", command: CMD_EXPORT_VGM },
+  { label: "Export WAV", command: CMD_EXPORT_WAV },
+];
+
+const MDSLINK_MENU: MenuItem[] = [
+  { label: "mdslink file", command: CMD_MDSLINK_FILE },
+  { label: "mdslink directory", command: CMD_MDSLINK_DIRECTORY },
+  { label: "mdslink from mdslink.json", command: CMD_MDSLINK_FROM_CONFIG },
+];
+
+const QUICKROM_MENU: MenuItem[] = [
+  { label: "quickrom file", command: CMD_QUICKROM_FILE },
+  { label: "quickrom directory", command: CMD_QUICKROM_DIRECTORY },
+  { label: "quickrom from quickrom.json", command: CMD_QUICKROM_FROM_CONFIG },
+];
+
+async function pickAndRun(
+  placeHolder: string,
+  items: MenuItem[]
+): Promise<void> {
+  const selection = await vscode.window.showQuickPick(items, { placeHolder });
+  if (selection) {
+    await vscode.commands.executeCommand(selection.command);
+  }
+}
+
 function registerStatusBarItems(context: vscode.ExtensionContext): void {
-  const playItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Left,
-    100
-  );
-  playItem.text = "$(play) Play";
-  playItem.tooltip = "ctrmml: play";
-  playItem.command = CMD_PLAY;
-
-  const playCursorItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Left,
-    95
-  );
-  playCursorItem.text = "$(play-circle) Play Cursor";
-  playCursorItem.tooltip = "ctrmml: play from cursor";
-  playCursorItem.command = CMD_PLAY_FROM_CURSOR;
-
-  const stopItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Left,
-    90
-  );
-  stopItem.text = "$(stop) Stop";
-  stopItem.tooltip = "ctrmml: stop";
-  stopItem.command = CMD_STOP;
-
-  const exportItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Left,
-    80
-  );
-  exportItem.text = "$(save) Export";
-  exportItem.tooltip = "ctrmml: export";
-  exportItem.command = CMD_STATUS_EXPORT_MENU;
-
-  const quickromItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Left,
-    70
-  );
-  quickromItem.text = "$(package) QuickROM";
-  quickromItem.tooltip = "ctrmml: quickrom";
-  quickromItem.command = CMD_STATUS_QUICKROM_MENU;
-
-  const mdslinkItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Left,
-    60
-  );
-  mdslinkItem.text = "$(link) Mdslink";
-  mdslinkItem.tooltip = "ctrmml: mdslink";
-  mdslinkItem.command = CMD_STATUS_MDSLINK_MENU;
+  const items = STATUS_ITEMS.map(({ priority, text, tooltip, command }) => {
+    const item = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Left,
+      priority
+    );
+    item.text = text;
+    item.tooltip = tooltip;
+    item.command = command;
+    return item;
+  });
 
   const updateVisibility = () => {
-    const editor = vscode.window.activeTextEditor;
-    const isCtrmml = editor?.document.languageId === LANGUAGE_ID;
-    if (isCtrmml) {
-      playItem.show();
-      playCursorItem.show();
-      stopItem.show();
-      exportItem.show();
-      quickromItem.show();
-      mdslinkItem.show();
-    } else {
-      playItem.hide();
-      playCursorItem.hide();
-      stopItem.hide();
-      exportItem.hide();
-      quickromItem.hide();
-      mdslinkItem.hide();
+    const isCtrmml =
+      vscode.window.activeTextEditor?.document.languageId === LANGUAGE_ID;
+    for (const item of items) {
+      if (isCtrmml) {
+        item.show();
+      } else {
+        item.hide();
+      }
     }
   };
 
   context.subscriptions.push(
-    playItem,
-    playCursorItem,
-    stopItem,
-    exportItem,
-    quickromItem,
-    mdslinkItem,
+    ...items,
     vscode.window.onDidChangeActiveTextEditor(updateVisibility),
-    vscode.commands.registerCommand(CMD_STATUS_EXPORT_MENU, async () => {
-      const selection = await vscode.window.showQuickPick(
-        [
-          { label: "Export VGM", command: CMD_EXPORT_VGM },
-          { label: "Export WAV", command: CMD_EXPORT_WAV },
-        ],
-        { placeHolder: "ctrmml: export" }
-      );
-      if (!selection) {
-        return;
+    vscode.commands.registerCommand(CMD_STATUS_RUN, async (command: string) => {
+      if (requireClient()) {
+        await vscode.commands.executeCommand(command);
       }
-      await vscode.commands.executeCommand(selection.command);
     }),
-    vscode.commands.registerCommand(CMD_STATUS_MDSLINK_MENU, () =>
-      showMdslinkMenu()
-    ),
-    vscode.commands.registerCommand(CMD_STATUS_QUICKROM_MENU, () =>
-      showQuickromMenu()
-    )
+    vscode.commands.registerCommand(CMD_STATUS_EXPORT_MENU, async () => {
+      if (requireClient()) {
+        await pickAndRun("ctrmml: export", EXPORT_MENU);
+      }
+    })
   );
 
   updateVisibility();
 }
 
-async function showMdslinkMenu(): Promise<void> {
-  const selection = await vscode.window.showQuickPick(
-    [
-      { label: "mdslink file", command: CMD_MDSLINK_FILE },
-      { label: "mdslink directory", command: CMD_MDSLINK_DIRECTORY },
-      {
-        label: "mdslink from mdslink.json",
-        command: CMD_MDSLINK_FROM_CONFIG,
-      },
-    ],
-    { placeHolder: "ctrmml: mdslink" }
-  );
-  if (!selection) {
-    return;
-  }
-  await vscode.commands.executeCommand(selection.command);
-}
-
-async function showQuickromMenu(): Promise<void> {
-  const selection = await vscode.window.showQuickPick(
-    [
-      { label: "quickrom file", command: CMD_QUICKROM_FILE },
-      { label: "quickrom directory", command: CMD_QUICKROM_DIRECTORY },
-      {
-        label: "quickrom from quickrom.json",
-        command: CMD_QUICKROM_FROM_CONFIG,
-      },
-    ],
-    { placeHolder: "ctrmml: quickrom" }
-  );
-  if (!selection) {
-    return;
-  }
-  await vscode.commands.executeCommand(selection.command);
-}
-
 /**
- * Position the cursor just after the `fm` / `pcm` keyword on
- * `lineNumber` (1-based here, since this matches the lang-core/LSP wire
- * line which is 0-based — we add 1 below) and pop the completion list,
- * giving the user the same UX as `loadPatch` does in web-ctrmml.
+ * Position the cursor just after the `fm` / `pcm` keyword of the `@N`
+ * header on `zeroBasedLine` and pop the completion list, giving the user
+ * the same UX as `loadPatch` does in web-ctrmml.
  */
 async function loadPatchAtLine(
   uri: string,
@@ -225,15 +226,14 @@ async function loadPatchAtLine(
   const targetUri = vscode.Uri.parse(uri);
   const document = await vscode.workspace.openTextDocument(targetUri);
   const editor = await vscode.window.showTextDocument(document);
-  const line = zeroBasedLine; // already 0-based for vscode.Position
-  const text = document.lineAt(line).text;
-  const match = text.match(/^\s*@\d+\s+(fm|pcm)(?:\s|$)/);
-  if (!match) {
+  const header = readInstrumentHeader(document, zeroBasedLine);
+  if (!header || header.keyword.toLowerCase() !== type) {
     return;
   }
-  const keyword = match[1];
-  const kwIndex = match[0].lastIndexOf(keyword);
-  const position = new vscode.Position(line, kwIndex + keyword.length);
+  const position = new vscode.Position(
+    header.line,
+    header.start + header.keyword.length,
+  );
   editor.selection = new vscode.Selection(position, position);
   editor.revealRange(
     new vscode.Range(position, position),
@@ -257,66 +257,38 @@ interface RawPatchFormat {
   is_text: boolean;
 }
 
-/** Used when the server doesn't answer `ctrmml.patchFormats` or the
- * client isn't running — only formats known writable. */
-const FALLBACK_PATCH_FORMATS: PatchFormat[] = [
-  { label: "DefleMask Preset (.dmp)", ext: "dmp" },
-  { label: "Furnace Instrument (.fui)", ext: "fui" },
-  { label: "GIN (.gin)", ext: "gin" },
-  { label: "TFI (.tfi)", ext: "tfi" },
-  { label: "VGI (.vgi)", ext: "vgi" },
-  { label: "EIF (.eif)", ext: "eif" },
-  { label: "ctrmml (.mml)", ext: "mml" },
-];
-
-/** `ctrmml.patchFormats` result, cached per client instance. */
-let patchFormatsCache: { client: LanguageClient; formats: PatchFormat[] } | undefined;
-
-/** Writable patch formats in the library's canonical order, fetched from
- * the server's `ctrmml.patchFormats` command and cached per client
- * session. Falls back to a static list if the request fails, the
- * response is unusable, or no client is running. */
-async function getPatchFormats(
-  client: LanguageClient | undefined,
-): Promise<PatchFormat[]> {
-  if (!client) return FALLBACK_PATCH_FORMATS;
-  if (patchFormatsCache && patchFormatsCache.client === client) {
-    return patchFormatsCache.formats;
+/** Writable patch formats in the library's canonical order, from the
+ * server's `ctrmml.patchFormats`; empty when the request failed. */
+async function getPatchFormats(client: LanguageClient): Promise<PatchFormat[]> {
+  const result = await executeOnServer(
+    client,
+    "Save patch",
+    CMD_PATCH_FORMATS,
+    []
+  );
+  if (!Array.isArray(result)) {
+    return [];
   }
-  try {
-    const result = await client.sendRequest("workspace/executeCommand", {
-      command: CMD_PATCH_FORMATS,
-      arguments: [],
-    });
-    if (!Array.isArray(result)) throw new Error("unexpected response shape");
-    const formats: PatchFormat[] = (result as RawPatchFormat[])
-      .filter((f) => f && f.can_write === true)
-      .map((f) => ({ label: `${f.name} (.${f.extension})`, ext: f.extension }));
-    if (formats.length === 0) throw new Error("no writable formats");
-    patchFormatsCache = { client, formats };
-    return formats;
-  } catch {
-    return FALLBACK_PATCH_FORMATS;
-  }
+  return (result as RawPatchFormat[])
+    .filter((f) => f.can_write)
+    .map((f) => ({ label: `${f.name} (.${f.extension})`, ext: f.extension }));
 }
 
 /** Pick a save target via the native file dialog, returning `{path,
- * format}` or `null` if the user cancelled. The default filename
- * follows web-ctrmml's convention `<basename>_@<N>.<ext>`. */
+ * format}`, or `null` when cancelled or no format is available. The
+ * default filename follows web-ctrmml's convention `<basename>_@<N>.<ext>`. */
 async function pickPatchSaveTarget(
   uri: string,
   instrumentNumber: number,
-  client: LanguageClient | undefined,
+  client: LanguageClient,
 ): Promise<{ path: string; format: string } | null> {
   const patchFormats = await getPatchFormats(client);
+  if (patchFormats.length === 0) return null;
   const sourceUri = vscode.Uri.parse(uri);
   const sourceName = sourceUri.path.split("/").pop() ?? "";
   const stem = sourceName.replace(/\.mml$/i, "") || "patch";
   const defaultName = `${stem}_@${instrumentNumber}.${patchFormats[0].ext}`;
-  const defaultUri = vscode.Uri.joinPath(
-    vscode.Uri.parse(uri).with({ path: sourceUri.path.replace(/\/[^/]*$/, "") }),
-    defaultName,
-  );
+  const defaultUri = vscode.Uri.joinPath(sourceUri, "..", defaultName);
 
   const filters: Record<string, string[]> = {};
   for (const f of patchFormats) filters[f.label] = [f.ext];
@@ -334,95 +306,82 @@ async function pickPatchSaveTarget(
   return { path: picked.fsPath, format };
 }
 
-/** Extract the instrument number from the `@N` header at `lineNumber`
- * (0-based) — used to seed the save dialog's default filename. */
-function readInstrumentNumber(
-  document: vscode.TextDocument,
-  zeroBasedLine: number,
-): number | null {
-  if (zeroBasedLine < 0 || zeroBasedLine >= document.lineCount) return null;
-  const match = document.lineAt(zeroBasedLine).text.match(/^\s*@(\d+)/);
-  return match ? parseInt(match[1], 10) : null;
-}
-
-function registerLensCommands(
-  context: vscode.ExtensionContext,
-  getClient: () => LanguageClient | undefined,
-): void {
-  // Code-lens click chain: Monaco code-lens → vscode.commands.executeCommand
-  // ("mml.previewPatch" or "mml.savePatch", …args). For commands the LSP
-  // owns we forward the request via the language client; for ones that
-  // need native UI (Load triggers completion, Save prompts a file
-  // dialog) we handle them here and then optionally call the LSP.
-  const forwardToLsp = (command: string) =>
-    vscode.commands.registerCommand(command, async (...args: unknown[]) => {
-      const client = getClient();
-      if (!client) {
-        vscode.window.showWarningMessage(
-          "ctrmml-lsp is not running; lens commands are unavailable.",
-        );
-        return;
-      }
-      await client.sendRequest("workspace/executeCommand", {
-        command,
-        arguments: args,
-      });
-    });
-
+function registerLensCommands(context: vscode.ExtensionContext): void {
+  // Preview runs on the server. Load opens completion at the header; Save
+  // asks for a file, then runs on the server.
   context.subscriptions.push(
-    forwardToLsp(CMD_PREVIEW_PATCH),
+    vscode.commands.registerCommand(CMD_PREVIEW_PATCH, async (...args) => {
+      const client = requireClient();
+      if (client) {
+        await executeOnServer(client, CMD_PREVIEW_PATCH, CMD_PREVIEW_PATCH, args);
+      }
+    }),
     vscode.commands.registerCommand(
       CMD_LOAD_PATCH,
       async (uri: string, line: unknown, type: unknown) => {
-        const zeroBased = typeof line === "number"
-          ? line
-          : typeof line === "string"
-            ? parseInt(line, 10) || 0
-            : 0;
-        await loadPatchAtLine(uri, zeroBased, String(type));
+        await loadPatchAtLine(uri, lensLine(line), String(type));
       },
     ),
     vscode.commands.registerCommand(
       CMD_SAVE_PATCH,
       async (uri: string, line: unknown, type: unknown) => {
         if (type !== "fm") {
-          // Only FM patch export is wired right now — PSG/PCM blocks
-          // don't have a matching format ladder in ym2612_convert.
           vscode.window.showInformationMessage(
             "Only @N fm blocks can be exported as patches.",
           );
           return;
         }
-        const zeroBased = typeof line === "number"
-          ? line
-          : typeof line === "string"
-            ? parseInt(line, 10) || 0
-            : 0;
-        const client = getClient();
+        const zeroBased = lensLine(line);
+        const client = requireClient();
         if (!client) {
-          vscode.window.showWarningMessage(
-            "ctrmml-lsp is not running; save patch is unavailable.",
-          );
           return;
         }
         const document = await vscode.workspace.openTextDocument(
           vscode.Uri.parse(uri),
         );
-        const number = readInstrumentNumber(document, zeroBased) ?? 1;
+        const number = readInstrumentHeader(document, zeroBased)?.number ?? 1;
         const target = await pickPatchSaveTarget(uri, number, client);
         if (!target) return;
-        try {
-          await client.sendRequest("workspace/executeCommand", {
-            command: CMD_SAVE_PATCH,
-            arguments: [uri, zeroBased, type, target.path, target.format],
-          });
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          vscode.window.showErrorMessage(`Save patch failed: ${message}`);
-        }
+        await executeOnServer(client, "Save patch", CMD_SAVE_PATCH, [
+          uri,
+          zeroBased,
+          type,
+          target.path,
+          target.format,
+        ]);
       },
     ),
   );
+}
+
+/** 0-based line from a code-lens argument. */
+function lensLine(arg: unknown): number {
+  if (typeof arg === "number") {
+    return arg;
+  }
+  if (typeof arg === "string") {
+    return parseInt(arg, 10) || 0;
+  }
+  return 0;
+}
+
+/** Run a server command and return its result; a failure is shown as
+ * `<label> failed: …` and returns `undefined`. */
+async function executeOnServer(
+  client: LanguageClient,
+  label: string,
+  command: string,
+  args: unknown[]
+): Promise<unknown> {
+  try {
+    return await client.sendRequest("workspace/executeCommand", {
+      command,
+      arguments: args,
+    });
+  } catch (err) {
+    vscode.window.showErrorMessage(`${label} failed: ${errorMessage(err)}`);
+    return undefined;
+  }
 }
 
 /** First-class completion settings in the server's snake_case wire form. */
@@ -471,14 +430,59 @@ export async function activate(
     [...SEMANTIC_TOKEN_TYPES],
     []
   );
+  const semanticTokens = new CtrmmlSemanticTokensProvider(
+    context,
+    semanticLegend
+  );
   context.subscriptions.push(
+    semanticTokens,
     vscode.languages.registerDocumentSemanticTokensProvider(
       { scheme: "file", language: LANGUAGE_ID },
-      new CtrmmlSemanticTokensProvider(context, semanticLegend),
+      semanticTokens,
       semanticLegend
     )
   );
 
+  registerStatusBarItems(context);
+  registerLensCommands(context);
+
+  outputChannel = vscode.window.createOutputChannel("ctrmml language server");
+  let configTimer: ReturnType<typeof setTimeout> | undefined;
+  context.subscriptions.push(
+    outputChannel,
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (
+        event.affectsConfiguration("ctrmml.languageServer") ||
+        event.affectsConfiguration("ctrmml.completion")
+      ) {
+        clearTimeout(configTimer);
+        configTimer = setTimeout(
+          () => void restartClient(context),
+          CONFIG_RESTART_DELAY_MS
+        );
+      }
+    }),
+    { dispose: () => clearTimeout(configTimer) }
+  );
+  await restartClient(context);
+}
+
+/** Queue a restart unless one is already waiting; it reads the settings
+ * when it starts. */
+function restartClient(context: vscode.ExtensionContext): Promise<void> {
+  if (restartPending) {
+    return clientQueue;
+  }
+  restartPending = true;
+  clientQueue = clientQueue.then(async () => {
+    restartPending = false;
+    await stopClient();
+    await startClient(context);
+  });
+  return clientQueue;
+}
+
+async function startClient(context: vscode.ExtensionContext): Promise<void> {
   const config = vscode.workspace.getConfiguration("ctrmml");
   const customPath = config.get<string>("languageServer.path")?.trim();
   const args = config.get<string[]>("languageServer.args") ?? [];
@@ -498,10 +502,11 @@ export async function activate(
     }
   } else {
     try {
-      command = await ensureServerBinary(context);
+      command = await ensureServerBinary(context.globalStorageUri.fsPath);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      vscode.window.showErrorMessage(`ctrmml-lsp download failed: ${message}`);
+      vscode.window.showErrorMessage(
+        `ctrmml-lsp download failed: ${errorMessage(err)}`
+      );
       return;
     }
   }
@@ -519,6 +524,7 @@ export async function activate(
 
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: "file", language: LANGUAGE_ID }],
+    outputChannel,
     initializationOptions: mergeInitializationOptions(
       completionInitializationOptions(config),
       initOptions
@@ -526,34 +532,41 @@ export async function activate(
     middleware: {
       executeCommand: (command, args, next) => {
         if (command === CMD_MDSLINK_MENU) {
-          return showMdslinkMenu();
+          return pickAndRun("ctrmml: mdslink", MDSLINK_MENU);
         }
         if (command === CMD_QUICKROM_MENU) {
-          return showQuickromMenu();
+          return pickAndRun("ctrmml: quickrom", QUICKROM_MENU);
         }
-        const resolvedArgs = resolveCommandArgs(command, args);
-        return next(command, resolvedArgs);
+        return next(command, resolveCommandArgs(command, args));
       },
     },
   };
 
-  client = new LanguageClient(
+  const newClient = new LanguageClient(
     LSP_ID,
     "ctrmml language server",
     serverOptions,
     clientOptions
   );
+  client = newClient;
+  try {
+    await newClient.start();
+  } catch {
+    // The client reports start failures itself.
+  }
+}
 
-  await client.start();
-  context.subscriptions.push(client);
-
-  registerStatusBarItems(context);
-  registerLensCommands(context, () => client);
+async function stopClient(): Promise<void> {
+  const current = client;
+  client = undefined;
+  try {
+    await current?.dispose();
+  } catch {
+    // Not running.
+  }
 }
 
 export async function deactivate(): Promise<void> {
-  if (client) {
-    await client.stop();
-    client = undefined;
-  }
+  clientQueue = clientQueue.then(stopClient);
+  await clientQueue;
 }

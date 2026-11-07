@@ -1,6 +1,12 @@
 import * as vscode from "vscode";
 import { getTreeSitterLanguage } from "./treeSitter";
-import { Parser, type Language, type Node } from "./webTreeSitter";
+import { errorMessage } from "./utils/error";
+import {
+  Parser,
+  type Language,
+  type Tree,
+  type TreeCursor,
+} from "./webTreeSitter";
 
 export const SEMANTIC_TOKEN_TYPES = [
   "comment",
@@ -50,11 +56,20 @@ const TOKEN_TYPE_BY_NODE: Record<
   param_key: "property",
 };
 
+const TOKEN_INDEX_BY_NODE = new Map(
+  Object.entries(TOKEN_TYPE_BY_NODE).map(([node, type]) => [
+    node,
+    SEMANTIC_TOKEN_TYPES.indexOf(type),
+  ])
+);
+
 let treeSitterErrorShown = false;
 
 export class CtrmmlSemanticTokensProvider
-  implements vscode.DocumentSemanticTokensProvider
+  implements vscode.DocumentSemanticTokensProvider, vscode.Disposable
 {
+  private parser: InstanceType<typeof Parser.Parser> | undefined;
+
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly legend: vscode.SemanticTokensLegend
@@ -69,9 +84,8 @@ export class CtrmmlSemanticTokensProvider
       language = await getTreeSitterLanguage(this.context);
     } catch (err) {
       if (!treeSitterErrorShown) {
-        const message = err instanceof Error ? err.message : String(err);
         vscode.window.showWarningMessage(
-          `ctrmml highlight disabled: ${message}`
+          `ctrmml highlight disabled: ${errorMessage(err)}`
         );
         treeSitterErrorShown = true;
       }
@@ -82,61 +96,76 @@ export class CtrmmlSemanticTokensProvider
       return new vscode.SemanticTokens(new Uint32Array());
     }
 
-    const parser = new Parser.Parser();
-    parser.setLanguage(language);
-    const tree = parser.parse(document.getText());
+    if (!this.parser) {
+      this.parser = new Parser.Parser();
+      this.parser.setLanguage(language);
+    }
+    const text = document.getText();
+    const tree = this.parser.parse(text);
     if (!tree) {
       return new vscode.SemanticTokens(new Uint32Array());
     }
-    const builder = new vscode.SemanticTokensBuilder(this.legend);
-    collectTokens(tree.rootNode, document, builder);
-    return builder.build();
+    try {
+      const builder = new vscode.SemanticTokensBuilder(this.legend);
+      collectTokens(tree, text, builder);
+      return builder.build();
+    } finally {
+      tree.delete();
+    }
+  }
+
+  dispose(): void {
+    this.parser?.delete();
+    this.parser = undefined;
   }
 }
 
+/** Push a token for every named node without named children whose type is
+ * highlighted. */
 function collectTokens(
-  node: Node,
-  document: vscode.TextDocument,
+  tree: Tree,
+  text: string,
   builder: vscode.SemanticTokensBuilder
 ): void {
-  if (!node.isNamed) {
-    return;
-  }
-
-  if (node.namedChildCount === 0) {
-    const tokenType = TOKEN_TYPE_BY_NODE[node.type];
-    if (!tokenType) {
-      return;
+  const cursor = tree.walk();
+  try {
+    for (;;) {
+      if (gotoNamedChild(cursor)) {
+        continue;
+      }
+      pushToken(cursor, text, builder);
+      while (!gotoNamedSibling(cursor)) {
+        if (!cursor.gotoParent()) {
+          return;
+        }
+      }
     }
-
-    const range = new vscode.Range(
-      node.startPosition.row,
-      node.startPosition.column,
-      node.endPosition.row,
-      node.endPosition.column
-    );
-    // The `*_known_value` and `meta_value` tokens capture the leading
-    // whitespace between the keyword and the value to keep the grammar
-    // simple. Strip it before pushing so the highlight starts at the
-    // first non-space char.
-    const trimmedRange = trimLeadingWhitespaceRange(
-      node.type,
-      range,
-      document
-    );
-    if (!trimmedRange) {
-      return;
-    }
-    builder.push(trimmedRange, tokenType);
-    return;
+  } finally {
+    cursor.delete();
   }
+}
 
-  for (let i = 0; i < node.namedChildCount; i += 1) {
-    const child = node.namedChild(i);
-    if (child) {
-      collectTokens(child, document, builder);
+/** Move to the first named child; stays put when there is none. */
+function gotoNamedChild(cursor: TreeCursor): boolean {
+  if (!cursor.gotoFirstChild()) {
+    return false;
+  }
+  do {
+    if (cursor.nodeIsNamed) {
+      return true;
+    }
+  } while (cursor.gotoNextSibling());
+  cursor.gotoParent();
+  return false;
+}
+
+function gotoNamedSibling(cursor: TreeCursor): boolean {
+  while (cursor.gotoNextSibling()) {
+    if (cursor.nodeIsNamed) {
+      return true;
     }
   }
+  return false;
 }
 
 const META_VALUE_NODES = new Set([
@@ -147,27 +176,38 @@ const META_VALUE_NODES = new Set([
   "timesig_known_value",
 ]);
 
-function trimLeadingWhitespaceRange(
-  nodeType: string,
-  range: vscode.Range,
-  document: vscode.TextDocument
-): vscode.Range | null {
-  if (!META_VALUE_NODES.has(nodeType)) {
-    return range;
+function pushToken(
+  cursor: TreeCursor,
+  text: string,
+  builder: vscode.SemanticTokensBuilder
+): void {
+  const nodeType = cursor.nodeType;
+  const tokenType = TOKEN_INDEX_BY_NODE.get(nodeType);
+  if (tokenType === undefined) {
+    return;
   }
-
-  const text = document.getText(range);
-  let offset = 0;
-  while (offset < text.length && /\s/.test(text[offset])) {
-    offset += 1;
+  let { row, column } = cursor.startPosition;
+  const end = cursor.endPosition;
+  if (META_VALUE_NODES.has(nodeType)) {
+    // Meta values include the whitespace after the keyword, line breaks
+    // too; the token starts at the first non-space character.
+    let index = cursor.startIndex;
+    const endIndex = cursor.endIndex;
+    for (; index < endIndex && /\s/.test(text[index]); index += 1) {
+      if (text[index] === "\n") {
+        row += 1;
+        column = 0;
+      } else {
+        column += 1;
+      }
+    }
+    if (index === endIndex) {
+      return;
+    }
   }
-  if (offset === 0) {
-    return range;
+  // A semantic token cannot span lines.
+  if (row !== end.row) {
+    return;
   }
-  const startOffset = document.offsetAt(range.start) + offset;
-  const newStart = document.positionAt(startOffset);
-  if (newStart.isAfterOrEqual(range.end)) {
-    return null;
-  }
-  return new vscode.Range(newStart, range.end);
+  builder.push(row, column, end.column - column, tokenType, 0);
 }
