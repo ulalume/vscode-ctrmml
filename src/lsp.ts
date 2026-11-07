@@ -12,12 +12,24 @@ import { fileExists } from "./utils/fs";
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REDIRECTS = 5;
 
+type ArchiveExt = "zip" | "tar.gz";
+
 interface PlatformAssetInfo {
-  os: "macos" | "linux" | "windows";
-  arch: "arm64" | "x64";
-  ext: "zip" | "tar.gz";
+  os: string;
+  arch: string;
+  ext: ArchiveExt;
   binName: string;
 }
+
+const PLATFORMS: Partial<
+  Record<NodeJS.Platform, { os: string; ext: ArchiveExt; binName: string }>
+> = {
+  darwin: { os: "macos", ext: "tar.gz", binName: LSP_ID },
+  linux: { os: "linux", ext: "tar.gz", binName: LSP_ID },
+  win32: { os: "windows", ext: "zip", binName: `${LSP_ID}.exe` },
+};
+
+const ARCHS: Partial<Record<string, string>> = { arm64: "arm64", x64: "x64" };
 
 /** Path of the pinned server binary under `storage`, installing it first
  * when it is missing. */
@@ -36,36 +48,21 @@ export async function ensureServerBinary(storage: string): Promise<string> {
 }
 
 function platformAssetInfo(): PlatformAssetInfo {
-  let os: PlatformAssetInfo["os"];
-  switch (process.platform) {
-    case "darwin":
-      os = "macos";
-      break;
-    case "linux":
-      os = "linux";
-      break;
-    case "win32":
-      os = "windows";
-      break;
-    default:
-      throw new Error(`unsupported platform ${process.platform}`);
+  const platform = PLATFORMS[process.platform];
+  if (!platform) {
+    throw new Error(`unsupported platform ${process.platform}`);
   }
-
-  let arch: PlatformAssetInfo["arch"];
-  switch (process.arch) {
-    case "arm64":
-      arch = "arm64";
-      break;
-    case "x64":
-      arch = "x64";
-      break;
-    default:
-      throw new Error(`unsupported architecture ${process.arch}`);
+  const arch = ARCHS[process.arch];
+  if (!arch) {
+    throw new Error(`unsupported architecture ${process.arch}`);
   }
+  return { ...platform, arch };
+}
 
-  const ext: PlatformAssetInfo["ext"] = os === "windows" ? "zip" : "tar.gz";
-  const binName = os === "windows" ? `${LSP_ID}.exe` : LSP_ID;
-  return { os, arch, ext, binName };
+/** Release asset name of the pinned version for `platform`. */
+function assetName({ os, arch, ext }: PlatformAssetInfo): string {
+  const version = LSP_PINNED_TAG.replace(/^v/, "");
+  return `${LSP_ID}-${version}-${os}-${arch}.${ext}`;
 }
 
 /** Download and extract the pinned release into a temporary directory,
@@ -75,20 +72,17 @@ async function install(
   versionDir: string,
   platform: PlatformAssetInfo
 ): Promise<void> {
-  const version = LSP_PINNED_TAG.replace(/^v/, "");
-  const assetName = `${LSP_ID}-${version}-${platform.os}-${platform.arch}.${platform.ext}`;
-  const url = `https://github.com/${LSP_REPO}/releases/download/${LSP_PINNED_TAG}/${assetName}`;
+  const asset = assetName(platform);
+  const url = `https://github.com/${LSP_REPO}/releases/download/${LSP_PINNED_TAG}/${asset}`;
   const tempDir = await fsp.mkdtemp(path.join(storage, ".tmp-"));
   try {
-    const archivePath = path.join(tempDir, assetName);
+    const archivePath = path.join(tempDir, asset);
     await downloadFile(url, archivePath);
     await extractArchive(archivePath, tempDir, platform.ext);
     await fsp.rm(archivePath, { force: true });
-    const tempBin = path.join(tempDir, platform.binName);
-    if (!(await fileExists(tempBin))) {
-      throw new Error(`${platform.binName} not found in ${assetName}`);
+    if (!(await fileExists(path.join(tempDir, platform.binName)))) {
+      throw new Error(`${platform.binName} not found in ${asset}`);
     }
-    await makeExecutable(tempBin);
     await moveIntoPlace(tempDir, versionDir, platform.binName);
   } finally {
     await fsp.rm(tempDir, { recursive: true, force: true });
@@ -171,7 +165,7 @@ function downloadFile(
 async function extractArchive(
   archivePath: string,
   destDir: string,
-  ext: "zip" | "tar.gz"
+  ext: ArchiveExt
 ): Promise<void> {
   if (ext === "zip") {
     const zip = new AdmZip(archivePath);
