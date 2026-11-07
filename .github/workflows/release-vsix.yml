@@ -33,6 +33,9 @@ jobs:
             exit 1
           fi
 
+      - name: Build tree-sitter-ctrmml.wasm
+        run: npm run build:grammar
+
       - name: Compile
         run: npm run compile
 
