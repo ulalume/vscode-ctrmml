@@ -307,11 +307,8 @@ async function pickPatchSaveTarget(
 }
 
 function registerLensCommands(context: vscode.ExtensionContext): void {
-  // Code-lens click chain: Monaco code-lens → vscode.commands.executeCommand
-  // ("mml.previewPatch" or "mml.savePatch", …args). For commands the LSP
-  // owns we forward the request via the language client; for ones that
-  // need native UI (Load triggers completion, Save prompts a file
-  // dialog) we handle them here and then optionally call the LSP.
+  // Preview runs on the server. Load opens completion at the header; Save
+  // asks for a file, then runs on the server.
   context.subscriptions.push(
     vscode.commands.registerCommand(CMD_PREVIEW_PATCH, async (...args) => {
       const client = requireClient();
@@ -329,8 +326,6 @@ function registerLensCommands(context: vscode.ExtensionContext): void {
       CMD_SAVE_PATCH,
       async (uri: string, line: unknown, type: unknown) => {
         if (type !== "fm") {
-          // Only FM patch export is wired right now — PSG/PCM blocks
-          // don't have a matching format ladder in ym2612_convert.
           vscode.window.showInformationMessage(
             "Only @N fm blocks can be exported as patches.",
           );

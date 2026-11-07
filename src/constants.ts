@@ -2,9 +2,9 @@ export const LANGUAGE_ID = "ctrmml";
 export const LANGUAGE_WASM = "tree-sitter-ctrmml.wasm";
 export const LSP_ID = "ctrmml-lsp";
 export const LSP_REPO = "ulalume/language-server-ctrmml";
-// Pin to a known-good language-server release so an upstream release
-// can't silently break the vendored grammar / semantic-token contract.
-// Bump in lockstep with `megamml`'s `wasm-lang-core/build.sh` pin.
+// Language-server release the extension is tested with; it relies on the
+// server's command IDs and arguments. Bump together with the pin in
+// `megamml`'s `wasm-lang-core/build.sh`.
 export const LSP_PINNED_TAG = "v0.7.4";
 export const USER_AGENT = "vscode-ctrmml";
 export const CMD_PLAY = "ctrmml.play";
@@ -22,9 +22,8 @@ export const CMD_QUICKROM_FROM_CONFIG = "ctrmml.quickromFromConfig";
 export const CMD_QUICKROM_MENU = "ctrmml.quickromMenu";
 export const CMD_PATCH_FORMATS = "ctrmml.patchFormats";
 
-// Code-lens lens command IDs. These match the titles emitted by the LSP's
-// `textDocument/codeLens` response so the click chain
-// (Monaco → vscode.commands.executeCommand → middleware) lands here.
+// Command IDs of the server's code lenses. The extension registers these
+// itself; the server does not advertise them to VS Code.
 export const CMD_PREVIEW_PATCH = "mml.previewPatch";
 export const CMD_LOAD_PATCH = "mml.loadPatch";
 export const CMD_SAVE_PATCH = "mml.savePatch";
