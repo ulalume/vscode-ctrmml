@@ -25,6 +25,7 @@ import {
   LANGUAGE_ID,
   LSP_ID,
 } from "./constants";
+import { readInstrumentHeader } from "./instrumentHeader";
 import { ensureServerBinary } from "./lsp";
 import {
   CtrmmlSemanticTokensProvider,
@@ -239,10 +240,9 @@ async function showQuickromMenu(): Promise<void> {
 }
 
 /**
- * Position the cursor just after the `fm` / `pcm` keyword on
- * `lineNumber` (1-based here, since this matches the lang-core/LSP wire
- * line which is 0-based — we add 1 below) and pop the completion list,
- * giving the user the same UX as `loadPatch` does in web-ctrmml.
+ * Position the cursor just after the `fm` / `pcm` keyword of the `@N`
+ * header on `zeroBasedLine` and pop the completion list, giving the user
+ * the same UX as `loadPatch` does in web-ctrmml.
  */
 async function loadPatchAtLine(
   uri: string,
@@ -255,15 +255,14 @@ async function loadPatchAtLine(
   const targetUri = vscode.Uri.parse(uri);
   const document = await vscode.workspace.openTextDocument(targetUri);
   const editor = await vscode.window.showTextDocument(document);
-  const line = zeroBasedLine; // already 0-based for vscode.Position
-  const text = document.lineAt(line).text;
-  const match = text.match(/^\s*@\d+\s+(fm|pcm)(?:\s|$)/);
-  if (!match) {
+  const header = readInstrumentHeader(document, zeroBasedLine);
+  if (!header || header.keyword.toLowerCase() !== type) {
     return;
   }
-  const keyword = match[1];
-  const kwIndex = match[0].lastIndexOf(keyword);
-  const position = new vscode.Position(line, kwIndex + keyword.length);
+  const position = new vscode.Position(
+    header.line,
+    header.start + header.keyword.length,
+  );
   editor.selection = new vscode.Selection(position, position);
   editor.revealRange(
     new vscode.Range(position, position),
@@ -364,17 +363,6 @@ async function pickPatchSaveTarget(
   return { path: picked.fsPath, format };
 }
 
-/** Extract the instrument number from the `@N` header at `lineNumber`
- * (0-based) — used to seed the save dialog's default filename. */
-function readInstrumentNumber(
-  document: vscode.TextDocument,
-  zeroBasedLine: number,
-): number | null {
-  if (zeroBasedLine < 0 || zeroBasedLine >= document.lineCount) return null;
-  const match = document.lineAt(zeroBasedLine).text.match(/^\s*@(\d+)/);
-  return match ? parseInt(match[1], 10) : null;
-}
-
 function registerLensCommands(context: vscode.ExtensionContext): void {
   // Code-lens click chain: Monaco code-lens → vscode.commands.executeCommand
   // ("mml.previewPatch" or "mml.savePatch", …args). For commands the LSP
@@ -434,7 +422,7 @@ function registerLensCommands(context: vscode.ExtensionContext): void {
         const document = await vscode.workspace.openTextDocument(
           vscode.Uri.parse(uri),
         );
-        const number = readInstrumentNumber(document, zeroBased) ?? 1;
+        const number = readInstrumentHeader(document, zeroBased)?.number ?? 1;
         const target = await pickPatchSaveTarget(uri, number, client);
         if (!target) return;
         try {
