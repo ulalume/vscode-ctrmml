@@ -14,25 +14,6 @@
   "categories": [
     "Programming Languages"
   ],
-  "activationEvents": [
-    "onLanguage:ctrmml",
-    "onCommand:ctrmml.play",
-    "onCommand:ctrmml.playFromCursor",
-    "onCommand:ctrmml.stop",
-    "onCommand:ctrmml.mdslinkFile",
-    "onCommand:ctrmml.mdslinkDirectory",
-    "onCommand:ctrmml.mdslinkFromConfig",
-    "onCommand:ctrmml.mdslinkMenu",
-    "onCommand:ctrmml.quickromFile",
-    "onCommand:ctrmml.quickromDirectory",
-    "onCommand:ctrmml.quickromFromConfig",
-    "onCommand:ctrmml.quickromMenu",
-    "onCommand:ctrmml.exportVgm",
-    "onCommand:ctrmml.exportWav",
-    "onCommand:mml.previewPatch",
-    "onCommand:mml.loadPatch",
-    "onCommand:mml.savePatch"
-  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
