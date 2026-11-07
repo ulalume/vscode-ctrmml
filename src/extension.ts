@@ -33,6 +33,9 @@ import {
 import { fileExists } from "./utils/fs";
 
 let client: LanguageClient | undefined;
+/** Serializes client starts and stops. */
+let clientQueue: Promise<void> = Promise.resolve();
+let outputChannel: vscode.OutputChannel | undefined;
 
 const CMD_STATUS_RUN = "ctrmml.status.run";
 const CMD_STATUS_EXPORT_MENU = "ctrmml.status.exportMenu";
@@ -509,7 +512,28 @@ export async function activate(
 
   registerStatusBarItems(context);
   registerLensCommands(context);
-  await startClient(context);
+
+  outputChannel = vscode.window.createOutputChannel("ctrmml language server");
+  context.subscriptions.push(
+    outputChannel,
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (
+        event.affectsConfiguration("ctrmml.languageServer") ||
+        event.affectsConfiguration("ctrmml.completion")
+      ) {
+        void restartClient(context);
+      }
+    })
+  );
+  await restartClient(context);
+}
+
+function restartClient(context: vscode.ExtensionContext): Promise<void> {
+  clientQueue = clientQueue.then(async () => {
+    await stopClient();
+    await startClient(context);
+  });
+  return clientQueue;
 }
 
 async function startClient(context: vscode.ExtensionContext): Promise<void> {
@@ -553,6 +577,7 @@ async function startClient(context: vscode.ExtensionContext): Promise<void> {
 
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: "file", language: LANGUAGE_ID }],
+    outputChannel,
     initializationOptions: mergeInitializationOptions(
       completionInitializationOptions(config),
       initOptions
@@ -596,5 +621,6 @@ async function stopClient(): Promise<void> {
 }
 
 export async function deactivate(): Promise<void> {
-  await stopClient();
+  clientQueue = clientQueue.then(stopClient);
+  await clientQueue;
 }

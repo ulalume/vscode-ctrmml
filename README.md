@@ -26,7 +26,7 @@ If you prefer Zed, see https://github.com/ulalume/zed-ctrmml
 
 ## Settings
 
-Settings are read when the language server starts — reload the window after changing them.
+Changing a setting restarts the language server.
 
 | Setting | Default | Description |
 | --- | --- | --- |
