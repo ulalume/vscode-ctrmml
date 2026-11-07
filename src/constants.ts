@@ -5,7 +5,7 @@ export const LSP_REPO = "ulalume/language-server-ctrmml";
 // Language-server release the extension is tested with; it relies on the
 // server's command IDs and arguments. Bump together with the pin in
 // `megamml`'s `wasm-lang-core/build.sh`.
-export const LSP_PINNED_TAG = "v0.7.4";
+export const LSP_PINNED_TAG = "v0.8.0";
 export const USER_AGENT = "vscode-ctrmml";
 export const CMD_PLAY = "ctrmml.play";
 export const CMD_PLAY_FROM_CURSOR = "ctrmml.playFromCursor";

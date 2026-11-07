@@ -25,7 +25,6 @@ import {
   LANGUAGE_ID,
   LSP_ID,
 } from "./constants";
-import { readInstrumentHeader } from "./instrumentHeader";
 import { ensureServerBinary } from "./lsp";
 import {
   CtrmmlSemanticTokensProvider,
@@ -42,6 +41,13 @@ let outputChannel: vscode.OutputChannel | undefined;
 
 /** Settings changes within this interval cause one restart. */
 const CONFIG_RESTART_DELAY_MS = 400;
+/** Settings whose change restarts the server. The server reads the
+ * completion settings and `command_path` again itself. */
+const RESTART_SETTINGS = [
+  "ctrmml.languageServer.path",
+  "ctrmml.languageServer.args",
+  "ctrmml.languageServer.env",
+];
 
 const CMD_STATUS_RUN = "ctrmml.status.run";
 const CMD_STATUS_EXPORT_MENU = "ctrmml.status.exportMenu";
@@ -211,14 +217,16 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
 }
 
 /**
- * Position the cursor just after the `fm` / `pcm` keyword of the `@N`
- * header on `zeroBasedLine` and pop the completion list, giving the user
- * the same UX as `loadPatch` does in web-ctrmml.
+ * Position the cursor just after the `fm` / `pcm` keyword of an `@N`
+ * header, at the keyword's line and end from the lens, and pop the
+ * completion list, giving the user the same UX as `loadPatch` does in
+ * web-ctrmml.
  */
-async function loadPatchAtLine(
+async function loadPatchAtKeyword(
   uri: string,
-  zeroBasedLine: number,
   type: string,
+  keywordLine: number,
+  keywordEnd: number,
 ): Promise<void> {
   if (type !== "fm" && type !== "pcm") {
     return;
@@ -226,13 +234,8 @@ async function loadPatchAtLine(
   const targetUri = vscode.Uri.parse(uri);
   const document = await vscode.workspace.openTextDocument(targetUri);
   const editor = await vscode.window.showTextDocument(document);
-  const header = readInstrumentHeader(document, zeroBasedLine);
-  if (!header || header.keyword.toLowerCase() !== type) {
-    return;
-  }
-  const position = new vscode.Position(
-    header.line,
-    header.start + header.keyword.length,
+  const position = document.validatePosition(
+    new vscode.Position(keywordLine, keywordEnd),
   );
   editor.selection = new vscode.Selection(position, position);
   editor.revealRange(
@@ -276,10 +279,12 @@ async function getPatchFormats(client: LanguageClient): Promise<PatchFormat[]> {
 
 /** Pick a save target via the native file dialog, returning `{path,
  * format}`, or `null` when cancelled or no format is available. The
- * default filename follows web-ctrmml's convention `<basename>_@<N>.<ext>`. */
+ * default filename follows web-ctrmml's convention: the patch name, else
+ * `<basename>_@<N>`. */
 async function pickPatchSaveTarget(
   uri: string,
-  instrumentNumber: number,
+  instrumentNumber: string,
+  patchName: string,
   client: LanguageClient,
 ): Promise<{ path: string; format: string } | null> {
   const patchFormats = await getPatchFormats(client);
@@ -287,7 +292,10 @@ async function pickPatchSaveTarget(
   const sourceUri = vscode.Uri.parse(uri);
   const sourceName = sourceUri.path.split("/").pop() ?? "";
   const stem = sourceName.replace(/\.mml$/i, "") || "patch";
-  const defaultName = `${stem}_@${instrumentNumber}.${patchFormats[0].ext}`;
+  const baseName = sanitizePatchName(
+    patchName.trim() || `${stem}_@${instrumentNumber}`,
+  );
+  const defaultName = `${baseName}.${patchFormats[0].ext}`;
   const defaultUri = vscode.Uri.joinPath(sourceUri, "..", defaultName);
 
   const filters: Record<string, string[]> = {};
@@ -306,6 +314,11 @@ async function pickPatchSaveTarget(
   return { path: picked.fsPath, format };
 }
 
+/** `name` with path separators and control characters replaced. */
+function sanitizePatchName(name: string): string {
+  return name.replace(/[\\/\x00-\x1f]/g, "_").trim() || "patch";
+}
+
 function registerLensCommands(context: vscode.ExtensionContext): void {
   // Preview runs on the server. Load opens completion at the header; Save
   // asks for a file, then runs on the server.
@@ -318,29 +331,50 @@ function registerLensCommands(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand(
       CMD_LOAD_PATCH,
-      async (uri: string, line: unknown, type: unknown) => {
-        await loadPatchAtLine(uri, lensLine(line), String(type));
+      async (
+        uri: string,
+        _line: unknown,
+        type: unknown,
+        _number: unknown,
+        keywordLine: unknown,
+        keywordEnd: unknown,
+      ) => {
+        await loadPatchAtKeyword(
+          uri,
+          String(type),
+          lensNumber(keywordLine),
+          lensNumber(keywordEnd),
+        );
       },
     ),
     vscode.commands.registerCommand(
       CMD_SAVE_PATCH,
-      async (uri: string, line: unknown, type: unknown) => {
+      async (
+        uri: string,
+        line: unknown,
+        type: unknown,
+        number: unknown,
+        _keywordLine: unknown,
+        _keywordEnd: unknown,
+        name: unknown,
+      ) => {
         if (type !== "fm") {
           vscode.window.showInformationMessage(
             "Only @N fm blocks can be exported as patches.",
           );
           return;
         }
-        const zeroBased = lensLine(line);
+        const zeroBased = lensNumber(line);
         const client = requireClient();
         if (!client) {
           return;
         }
-        const document = await vscode.workspace.openTextDocument(
-          vscode.Uri.parse(uri),
+        const target = await pickPatchSaveTarget(
+          uri,
+          String(number),
+          typeof name === "string" ? name : "",
+          client,
         );
-        const number = readInstrumentHeader(document, zeroBased)?.number ?? 1;
-        const target = await pickPatchSaveTarget(uri, number, client);
         if (!target) return;
         await executeOnServer(client, "Save patch", CMD_SAVE_PATCH, [
           uri,
@@ -354,8 +388,8 @@ function registerLensCommands(context: vscode.ExtensionContext): void {
   );
 }
 
-/** 0-based line from a code-lens argument. */
-function lensLine(arg: unknown): number {
+/** A line or character from a code-lens argument. */
+function lensNumber(arg: unknown): number {
   if (typeof arg === "number") {
     return arg;
   }
@@ -382,45 +416,6 @@ async function executeOnServer(
     vscode.window.showErrorMessage(`${label} failed: ${errorMessage(err)}`);
     return undefined;
   }
-}
-
-/** First-class completion settings in the server's snake_case wire form. */
-function completionInitializationOptions(
-  config: vscode.WorkspaceConfiguration
-): Record<string, unknown> {
-  const options: Record<string, unknown> = {
-    arpeggio_enabled: config.get<boolean>("completion.arpeggio.enabled", false),
-    arpeggio_pattern: config.get<string>("completion.arpeggio.pattern", "up"),
-    chord_stack_mode: config.get<string>("completion.chordStackMode", "stack_up"),
-  };
-  // "auto" omits the key entirely so the server falls back to its
-  // editor-based default (VS Code gets the hierarchical picker).
-  const hierarchy = config.get<string>("completion.fmPickerHierarchy", "auto");
-  if (hierarchy === "on" || hierarchy === "off") {
-    options.fm_picker_hierarchy = hierarchy === "on";
-  }
-  return options;
-}
-
-/** Merge first-class completion settings with the raw
- * `ctrmml.languageServer.initializationOptions` object. The raw object
- * wins on conflicts; the server accepts snake_case and camelCase keys,
- * so a field counts as overridden in either spelling. */
-function mergeInitializationOptions(
-  completion: Record<string, unknown>,
-  raw: Record<string, unknown> | null | undefined
-): Record<string, unknown> {
-  if (!raw) {
-    return completion;
-  }
-  const merged: Record<string, unknown> = { ...completion };
-  for (const key of Object.keys(completion)) {
-    const camel = key.replace(/_([a-z])/g, (_, ch: string) => ch.toUpperCase());
-    if (key in raw || camel in raw) {
-      delete merged[key];
-    }
-  }
-  return { ...merged, ...raw };
 }
 
 export async function activate(
@@ -452,8 +447,7 @@ export async function activate(
     outputChannel,
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (
-        event.affectsConfiguration("ctrmml.languageServer") ||
-        event.affectsConfiguration("ctrmml.completion")
+        RESTART_SETTINGS.some((setting) => event.affectsConfiguration(setting))
       ) {
         clearTimeout(configTimer);
         configTimer = setTimeout(
@@ -481,6 +475,19 @@ function restartClient(context: vscode.ExtensionContext): Promise<void> {
   });
   return clientQueue;
 }
+
+/** What this extension handles itself. camelCase so that a key in
+ * `ctrmml.languageServer.initializationOptions` wins in either spelling:
+ * the server reads snake_case first. */
+const CLIENT_OPTIONS = {
+  codeLensIcons: "codicon",
+  codeLensFileActions: true,
+  // Play, stop, export, quickrom and mdslink are on the status bar.
+  commandCodeActions: false,
+  clientCommands: [CMD_PREVIEW_PATCH, CMD_LOAD_PATCH, CMD_SAVE_PATCH],
+  // What `ctrmml.completion.fmPickerHierarchy: "auto"` means.
+  fmPickerHierarchy: true,
+};
 
 async function startClient(context: vscode.ExtensionContext): Promise<void> {
   const config = vscode.workspace.getConfiguration("ctrmml");
@@ -525,10 +532,7 @@ async function startClient(context: vscode.ExtensionContext): Promise<void> {
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: "file", language: LANGUAGE_ID }],
     outputChannel,
-    initializationOptions: mergeInitializationOptions(
-      completionInitializationOptions(config),
-      initOptions
-    ),
+    initializationOptions: { ...CLIENT_OPTIONS, ...initOptions },
     middleware: {
       executeCommand: (command, args, next) => {
         if (command === CMD_MDSLINK_MENU) {
