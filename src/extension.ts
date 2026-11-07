@@ -279,10 +279,12 @@ async function getPatchFormats(client: LanguageClient): Promise<PatchFormat[]> {
 
 /** Pick a save target via the native file dialog, returning `{path,
  * format}`, or `null` when cancelled or no format is available. The
- * default filename follows web-ctrmml's convention `<basename>_@<N>.<ext>`. */
+ * default filename follows web-ctrmml's convention: the patch name, else
+ * `<basename>_@<N>`. */
 async function pickPatchSaveTarget(
   uri: string,
   instrumentNumber: string,
+  patchName: string,
   client: LanguageClient,
 ): Promise<{ path: string; format: string } | null> {
   const patchFormats = await getPatchFormats(client);
@@ -290,7 +292,10 @@ async function pickPatchSaveTarget(
   const sourceUri = vscode.Uri.parse(uri);
   const sourceName = sourceUri.path.split("/").pop() ?? "";
   const stem = sourceName.replace(/\.mml$/i, "") || "patch";
-  const defaultName = `${stem}_@${instrumentNumber}.${patchFormats[0].ext}`;
+  const baseName = sanitizePatchName(
+    patchName.trim() || `${stem}_@${instrumentNumber}`,
+  );
+  const defaultName = `${baseName}.${patchFormats[0].ext}`;
   const defaultUri = vscode.Uri.joinPath(sourceUri, "..", defaultName);
 
   const filters: Record<string, string[]> = {};
@@ -307,6 +312,11 @@ async function pickPatchSaveTarget(
   const format =
     patchFormats.find((f) => f.ext === ext)?.ext ?? patchFormats[0].ext;
   return { path: picked.fsPath, format };
+}
+
+/** `name` with path separators and control characters replaced. */
+function sanitizePatchName(name: string): string {
+  return name.replace(/[\\/\x00-\x1f]/g, "_").trim() || "patch";
 }
 
 function registerLensCommands(context: vscode.ExtensionContext): void {
@@ -339,7 +349,15 @@ function registerLensCommands(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand(
       CMD_SAVE_PATCH,
-      async (uri: string, line: unknown, type: unknown, number: unknown) => {
+      async (
+        uri: string,
+        line: unknown,
+        type: unknown,
+        number: unknown,
+        _keywordLine: unknown,
+        _keywordEnd: unknown,
+        name: unknown,
+      ) => {
         if (type !== "fm") {
           vscode.window.showInformationMessage(
             "Only @N fm blocks can be exported as patches.",
@@ -351,7 +369,12 @@ function registerLensCommands(context: vscode.ExtensionContext): void {
         if (!client) {
           return;
         }
-        const target = await pickPatchSaveTarget(uri, String(number), client);
+        const target = await pickPatchSaveTarget(
+          uri,
+          String(number),
+          typeof name === "string" ? name : "",
+          client,
+        );
         if (!target) return;
         await executeOnServer(client, "Save patch", CMD_SAVE_PATCH, [
           uri,
