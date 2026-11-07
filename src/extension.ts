@@ -44,18 +44,14 @@ const CONFIG_RESTART_DELAY_MS = 400;
 
 const CMD_STATUS_RUN = "ctrmml.status.run";
 const CMD_STATUS_EXPORT_MENU = "ctrmml.status.exportMenu";
-const CMD_STATUS_MDSLINK_MENU = "ctrmml.status.mdslinkMenu";
-const CMD_STATUS_QUICKROM_MENU = "ctrmml.status.quickromMenu";
 
 const COMMANDS_NEED_URI = new Set([
   CMD_MDSLINK_FILE,
   CMD_MDSLINK_DIRECTORY,
   CMD_MDSLINK_FROM_CONFIG,
-  CMD_MDSLINK_MENU,
   CMD_QUICKROM_FILE,
   CMD_QUICKROM_DIRECTORY,
   CMD_QUICKROM_FROM_CONFIG,
-  CMD_QUICKROM_MENU,
   CMD_PLAY,
   CMD_PLAY_FROM_CURSOR,
   CMD_EXPORT_VGM,
@@ -94,82 +90,109 @@ function resolveCommandArgs(command: string, args: any[]): any[] {
   return [uri];
 }
 
+interface StatusItem {
+  priority: number;
+  text: string;
+  tooltip: string;
+  command: string | vscode.Command;
+}
+
+const STATUS_ITEMS: StatusItem[] = [
+  {
+    priority: 100,
+    text: "$(play) Play",
+    tooltip: "ctrmml: play",
+    command: serverCommand(CMD_PLAY),
+  },
+  {
+    priority: 95,
+    text: "$(play-circle) Play Cursor",
+    tooltip: "ctrmml: play from cursor",
+    command: serverCommand(CMD_PLAY_FROM_CURSOR),
+  },
+  {
+    priority: 90,
+    text: "$(stop) Stop",
+    tooltip: "ctrmml: stop",
+    command: serverCommand(CMD_STOP),
+  },
+  {
+    priority: 80,
+    text: "$(save) Export",
+    tooltip: "ctrmml: export",
+    command: CMD_STATUS_EXPORT_MENU,
+  },
+  {
+    priority: 70,
+    text: "$(package) QuickROM",
+    tooltip: "ctrmml: quickrom",
+    command: serverCommand(CMD_QUICKROM_MENU),
+  },
+  {
+    priority: 60,
+    text: "$(link) Mdslink",
+    tooltip: "ctrmml: mdslink",
+    command: serverCommand(CMD_MDSLINK_MENU),
+  },
+];
+
+interface MenuItem extends vscode.QuickPickItem {
+  command: string;
+}
+
+const EXPORT_MENU: MenuItem[] = [
+  { label: "Export VGM", command: CMD_EXPORT_VGM },
+  { label: "Export WAV", command: CMD_EXPORT_WAV },
+];
+
+const MDSLINK_MENU: MenuItem[] = [
+  { label: "mdslink file", command: CMD_MDSLINK_FILE },
+  { label: "mdslink directory", command: CMD_MDSLINK_DIRECTORY },
+  { label: "mdslink from mdslink.json", command: CMD_MDSLINK_FROM_CONFIG },
+];
+
+const QUICKROM_MENU: MenuItem[] = [
+  { label: "quickrom file", command: CMD_QUICKROM_FILE },
+  { label: "quickrom directory", command: CMD_QUICKROM_DIRECTORY },
+  { label: "quickrom from quickrom.json", command: CMD_QUICKROM_FROM_CONFIG },
+];
+
+async function pickAndRun(
+  placeHolder: string,
+  items: MenuItem[]
+): Promise<void> {
+  const selection = await vscode.window.showQuickPick(items, { placeHolder });
+  if (selection) {
+    await vscode.commands.executeCommand(selection.command);
+  }
+}
+
 function registerStatusBarItems(context: vscode.ExtensionContext): void {
-  const playItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Left,
-    100
-  );
-  playItem.text = "$(play) Play";
-  playItem.tooltip = "ctrmml: play";
-  playItem.command = serverCommand(CMD_PLAY);
-
-  const playCursorItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Left,
-    95
-  );
-  playCursorItem.text = "$(play-circle) Play Cursor";
-  playCursorItem.tooltip = "ctrmml: play from cursor";
-  playCursorItem.command = serverCommand(CMD_PLAY_FROM_CURSOR);
-
-  const stopItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Left,
-    90
-  );
-  stopItem.text = "$(stop) Stop";
-  stopItem.tooltip = "ctrmml: stop";
-  stopItem.command = serverCommand(CMD_STOP);
-
-  const exportItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Left,
-    80
-  );
-  exportItem.text = "$(save) Export";
-  exportItem.tooltip = "ctrmml: export";
-  exportItem.command = CMD_STATUS_EXPORT_MENU;
-
-  const quickromItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Left,
-    70
-  );
-  quickromItem.text = "$(package) QuickROM";
-  quickromItem.tooltip = "ctrmml: quickrom";
-  quickromItem.command = CMD_STATUS_QUICKROM_MENU;
-
-  const mdslinkItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Left,
-    60
-  );
-  mdslinkItem.text = "$(link) Mdslink";
-  mdslinkItem.tooltip = "ctrmml: mdslink";
-  mdslinkItem.command = CMD_STATUS_MDSLINK_MENU;
+  const items = STATUS_ITEMS.map(({ priority, text, tooltip, command }) => {
+    const item = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Left,
+      priority
+    );
+    item.text = text;
+    item.tooltip = tooltip;
+    item.command = command;
+    return item;
+  });
 
   const updateVisibility = () => {
-    const editor = vscode.window.activeTextEditor;
-    const isCtrmml = editor?.document.languageId === LANGUAGE_ID;
-    if (isCtrmml) {
-      playItem.show();
-      playCursorItem.show();
-      stopItem.show();
-      exportItem.show();
-      quickromItem.show();
-      mdslinkItem.show();
-    } else {
-      playItem.hide();
-      playCursorItem.hide();
-      stopItem.hide();
-      exportItem.hide();
-      quickromItem.hide();
-      mdslinkItem.hide();
+    const isCtrmml =
+      vscode.window.activeTextEditor?.document.languageId === LANGUAGE_ID;
+    for (const item of items) {
+      if (isCtrmml) {
+        item.show();
+      } else {
+        item.hide();
+      }
     }
   };
 
   context.subscriptions.push(
-    playItem,
-    playCursorItem,
-    stopItem,
-    exportItem,
-    quickromItem,
-    mdslinkItem,
+    ...items,
     vscode.window.onDidChangeActiveTextEditor(updateVisibility),
     vscode.commands.registerCommand(CMD_STATUS_RUN, async (command: string) => {
       if (requireClient()) {
@@ -177,70 +200,13 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.commands.registerCommand(CMD_STATUS_EXPORT_MENU, async () => {
-      if (!requireClient()) {
-        return;
-      }
-      const selection = await vscode.window.showQuickPick(
-        [
-          { label: "Export VGM", command: CMD_EXPORT_VGM },
-          { label: "Export WAV", command: CMD_EXPORT_WAV },
-        ],
-        { placeHolder: "ctrmml: export" }
-      );
-      if (!selection) {
-        return;
-      }
-      await vscode.commands.executeCommand(selection.command);
-    }),
-    vscode.commands.registerCommand(CMD_STATUS_MDSLINK_MENU, async () => {
       if (requireClient()) {
-        await showMdslinkMenu();
-      }
-    }),
-    vscode.commands.registerCommand(CMD_STATUS_QUICKROM_MENU, async () => {
-      if (requireClient()) {
-        await showQuickromMenu();
+        await pickAndRun("ctrmml: export", EXPORT_MENU);
       }
     })
   );
 
   updateVisibility();
-}
-
-async function showMdslinkMenu(): Promise<void> {
-  const selection = await vscode.window.showQuickPick(
-    [
-      { label: "mdslink file", command: CMD_MDSLINK_FILE },
-      { label: "mdslink directory", command: CMD_MDSLINK_DIRECTORY },
-      {
-        label: "mdslink from mdslink.json",
-        command: CMD_MDSLINK_FROM_CONFIG,
-      },
-    ],
-    { placeHolder: "ctrmml: mdslink" }
-  );
-  if (!selection) {
-    return;
-  }
-  await vscode.commands.executeCommand(selection.command);
-}
-
-async function showQuickromMenu(): Promise<void> {
-  const selection = await vscode.window.showQuickPick(
-    [
-      { label: "quickrom file", command: CMD_QUICKROM_FILE },
-      { label: "quickrom directory", command: CMD_QUICKROM_DIRECTORY },
-      {
-        label: "quickrom from quickrom.json",
-        command: CMD_QUICKROM_FROM_CONFIG,
-      },
-    ],
-    { placeHolder: "ctrmml: quickrom" }
-  );
-  if (!selection) {
-    return;
-  }
-  await vscode.commands.executeCommand(selection.command);
 }
 
 /**
@@ -590,13 +556,12 @@ async function startClient(context: vscode.ExtensionContext): Promise<void> {
     middleware: {
       executeCommand: (command, args, next) => {
         if (command === CMD_MDSLINK_MENU) {
-          return showMdslinkMenu();
+          return pickAndRun("ctrmml: mdslink", MDSLINK_MENU);
         }
         if (command === CMD_QUICKROM_MENU) {
-          return showQuickromMenu();
+          return pickAndRun("ctrmml: quickrom", QUICKROM_MENU);
         }
-        const resolvedArgs = resolveCommandArgs(command, args);
-        return next(command, resolvedArgs);
+        return next(command, resolveCommandArgs(command, args));
       },
     },
   };
