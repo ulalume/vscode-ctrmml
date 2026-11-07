@@ -34,6 +34,7 @@ import { fileExists } from "./utils/fs";
 
 let client: LanguageClient | undefined;
 
+const CMD_STATUS_RUN = "ctrmml.status.run";
 const CMD_STATUS_EXPORT_MENU = "ctrmml.status.exportMenu";
 const CMD_STATUS_MDSLINK_MENU = "ctrmml.status.mdslinkMenu";
 const CMD_STATUS_QUICKROM_MENU = "ctrmml.status.quickromMenu";
@@ -52,6 +53,20 @@ const COMMANDS_NEED_URI = new Set([
   CMD_EXPORT_VGM,
   CMD_EXPORT_WAV,
 ]);
+
+/** The running client, or `undefined` after telling the user it is not. */
+function requireClient(): LanguageClient | undefined {
+  if (client?.isRunning()) {
+    return client;
+  }
+  vscode.window.showWarningMessage("ctrmml language server is not running.");
+  return undefined;
+}
+
+/** Status bar command that runs a server command once the client is up. */
+function serverCommand(command: string): vscode.Command {
+  return { title: command, command: CMD_STATUS_RUN, arguments: [command] };
+}
 
 function resolveCommandArgs(command: string, args: any[]): any[] {
   if (args.length > 0 || !COMMANDS_NEED_URI.has(command)) {
@@ -78,7 +93,7 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
   );
   playItem.text = "$(play) Play";
   playItem.tooltip = "ctrmml: play";
-  playItem.command = CMD_PLAY;
+  playItem.command = serverCommand(CMD_PLAY);
 
   const playCursorItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
@@ -86,7 +101,7 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
   );
   playCursorItem.text = "$(play-circle) Play Cursor";
   playCursorItem.tooltip = "ctrmml: play from cursor";
-  playCursorItem.command = CMD_PLAY_FROM_CURSOR;
+  playCursorItem.command = serverCommand(CMD_PLAY_FROM_CURSOR);
 
   const stopItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
@@ -94,7 +109,7 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
   );
   stopItem.text = "$(stop) Stop";
   stopItem.tooltip = "ctrmml: stop";
-  stopItem.command = CMD_STOP;
+  stopItem.command = serverCommand(CMD_STOP);
 
   const exportItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
@@ -148,7 +163,15 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
     quickromItem,
     mdslinkItem,
     vscode.window.onDidChangeActiveTextEditor(updateVisibility),
+    vscode.commands.registerCommand(CMD_STATUS_RUN, async (command: string) => {
+      if (requireClient()) {
+        await vscode.commands.executeCommand(command);
+      }
+    }),
     vscode.commands.registerCommand(CMD_STATUS_EXPORT_MENU, async () => {
+      if (!requireClient()) {
+        return;
+      }
       const selection = await vscode.window.showQuickPick(
         [
           { label: "Export VGM", command: CMD_EXPORT_VGM },
@@ -161,12 +184,16 @@ function registerStatusBarItems(context: vscode.ExtensionContext): void {
       }
       await vscode.commands.executeCommand(selection.command);
     }),
-    vscode.commands.registerCommand(CMD_STATUS_MDSLINK_MENU, () =>
-      showMdslinkMenu()
-    ),
-    vscode.commands.registerCommand(CMD_STATUS_QUICKROM_MENU, () =>
-      showQuickromMenu()
-    )
+    vscode.commands.registerCommand(CMD_STATUS_MDSLINK_MENU, async () => {
+      if (requireClient()) {
+        await showMdslinkMenu();
+      }
+    }),
+    vscode.commands.registerCommand(CMD_STATUS_QUICKROM_MENU, async () => {
+      if (requireClient()) {
+        await showQuickromMenu();
+      }
+    })
   );
 
   updateVisibility();
@@ -345,10 +372,7 @@ function readInstrumentNumber(
   return match ? parseInt(match[1], 10) : null;
 }
 
-function registerLensCommands(
-  context: vscode.ExtensionContext,
-  getClient: () => LanguageClient | undefined,
-): void {
+function registerLensCommands(context: vscode.ExtensionContext): void {
   // Code-lens click chain: Monaco code-lens → vscode.commands.executeCommand
   // ("mml.previewPatch" or "mml.savePatch", …args). For commands the LSP
   // owns we forward the request via the language client; for ones that
@@ -356,17 +380,19 @@ function registerLensCommands(
   // dialog) we handle them here and then optionally call the LSP.
   const forwardToLsp = (command: string) =>
     vscode.commands.registerCommand(command, async (...args: unknown[]) => {
-      const client = getClient();
+      const client = requireClient();
       if (!client) {
-        vscode.window.showWarningMessage(
-          "ctrmml-lsp is not running; lens commands are unavailable.",
-        );
         return;
       }
-      await client.sendRequest("workspace/executeCommand", {
-        command,
-        arguments: args,
-      });
+      try {
+        await client.sendRequest("workspace/executeCommand", {
+          command,
+          arguments: args,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`${command} failed: ${message}`);
+      }
     });
 
   context.subscriptions.push(
@@ -398,11 +424,8 @@ function registerLensCommands(
           : typeof line === "string"
             ? parseInt(line, 10) || 0
             : 0;
-        const client = getClient();
+        const client = requireClient();
         if (!client) {
-          vscode.window.showWarningMessage(
-            "ctrmml-lsp is not running; save patch is unavailable.",
-          );
           return;
         }
         const document = await vscode.workspace.openTextDocument(
@@ -484,6 +507,12 @@ export async function activate(
     )
   );
 
+  registerStatusBarItems(context);
+  registerLensCommands(context);
+  await startClient(context);
+}
+
+async function startClient(context: vscode.ExtensionContext): Promise<void> {
   const config = vscode.workspace.getConfiguration("ctrmml");
   const customPath = config.get<string>("languageServer.path")?.trim();
   const args = config.get<string[]>("languageServer.args") ?? [];
@@ -542,23 +571,30 @@ export async function activate(
     },
   };
 
-  client = new LanguageClient(
+  const newClient = new LanguageClient(
     LSP_ID,
     "ctrmml language server",
     serverOptions,
     clientOptions
   );
+  client = newClient;
+  try {
+    await newClient.start();
+  } catch {
+    // The client reports start failures itself.
+  }
+}
 
-  await client.start();
-  context.subscriptions.push(client);
-
-  registerStatusBarItems(context);
-  registerLensCommands(context, () => client);
+async function stopClient(): Promise<void> {
+  const current = client;
+  client = undefined;
+  try {
+    await current?.dispose();
+  } catch {
+    // Not running.
+  }
 }
 
 export async function deactivate(): Promise<void> {
-  if (client) {
-    await client.stop();
-    client = undefined;
-  }
+  await stopClient();
 }
