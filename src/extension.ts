@@ -503,7 +503,7 @@ export async function activate(
     }
   } else {
     try {
-      command = await ensureServerBinary(context);
+      command = await ensureServerBinary(context.globalStorageUri.fsPath);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       vscode.window.showErrorMessage(`ctrmml-lsp download failed: ${message}`);

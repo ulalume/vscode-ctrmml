@@ -7,8 +7,6 @@ export const LSP_REPO = "ulalume/language-server-ctrmml";
 // Bump in lockstep with `megamml`'s `wasm-lang-core/build.sh` pin.
 export const LSP_PINNED_TAG = "v0.7.3";
 export const USER_AGENT = "vscode-ctrmml";
-export const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
-export const UPDATE_CHECK_FILENAME = ".ctrmml-lsp-last-check";
 export const CMD_PLAY = "ctrmml.play";
 export const CMD_PLAY_FROM_CURSOR = "ctrmml.playFromCursor";
 export const CMD_STOP = "ctrmml.stop";
