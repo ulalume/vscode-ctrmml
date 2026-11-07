@@ -39,7 +39,7 @@ Changing a setting restarts the language server.
 | `ctrmml.completion.chordStackMode` | `"stack_up"` | How chord and dyad completion bodies are voiced: `stack_up` (octave-carrying) or `plain` (close voicing). |
 | `ctrmml.completion.fmPickerHierarchy` | `"auto"` | Style of the FM instrument picker on `@N fm` lines. `auto` lets the server decide (VS Code gets the two-step file → patch picker); `on`/`off` force it. |
 
-`ctrmml.languageServer.initializationOptions` is merged over the `ctrmml.completion.*` settings and wins per field (snake_case or camelCase spelling), and may also carry other server options such as `command_path` / `ym2612_convert_path`.
+`ctrmml.languageServer.initializationOptions` is merged over the `ctrmml.completion.*` settings and wins per field (snake_case or camelCase spelling), and may also carry other server options such as `command_path`.
 
 ### Completion changes in language server v0.6.9
 
